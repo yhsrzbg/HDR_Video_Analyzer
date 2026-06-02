@@ -1,62 +1,78 @@
-# HDR Video Analyzer 📊
+# HDR Video Analyzer - Electron App
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![FFmpeg](https://img.shields.io/badge/Dependency-FFmpeg-green)
-![License](https://img.shields.io/badge/license-MIT-grey)
+A desktop application for analyzing HDR video files. It decodes video frames using FFmpeg, performs PQ EOTF conversion, calculates brightness and color gamut classification, and generates a detailed 3-panel analysis chart.
 
-**HDR Video Analyzer** is a high-performance Python tool designed to analyze brightness (Nits) and color gamut coverage (Rec.709 / P3 / Rec.2020) and APL% of HDR video files.
+## Features
 
+- **Brightness Analysis**: Peak and average brightness over time (displayed in PQ/nits scale)
+- **Color Gamut Classification**: Frame-by-frame breakdown of Rec.709, DCI-P3, and Rec.2020 content
+- **APL Histogram**: Average Picture Level distribution across all analyzed frames
+- **Statistics**: MaxCLL, AveCLL, MaxFALL, AveFALL, Average APL, Median APL
 
-## 🛠️ Requirements
+## Prerequisites
 
-* **Python 3.x**
-* **FFmpeg** (Must be installed and added to your system `PATH`).
-* Python Libraries:
-    ```bash
-    pip install numpy matplotlib
-    ```
-    *(Tkinter is usually included with Python)*
+- Node.js 18+ (recommended: 20+)
+- npm 9+
 
-## 📖 Usage
+FFmpeg is bundled automatically via `ffmpeg-static` - no separate installation needed.
 
-1.  **Run the script**:
-    ```bash
-    python HDR_Analyzer_Pro_v9.py
-    ```
-2.  **Select Mode**:
-    * **Analyze New Video**: Choose a 4K HDR video file (MKV, MP4, TS).
-    * **Plot from CSV**: Select a previously generated `.csv` to re-draw charts.
-3.  **Configure Settings**:
-    * **Sampling Interval**: Choose between Frame-by-frame (Slowest), 1s/sample, or 2s/sample.
-    * **Subsampling**: 
-        * `Yes`: Fast mode (Recommended). Physical pixel skipping. No interpolation artifacts.
-        * `No`: Full pixel analysis.
-4.  **Result**: 
-    * A `.csv` file containing timestamped Nits and Gamut data.
-    * A `.png` chart visualizing the analysis.
+## Setup
 
-## 📊 Output Explanation
+```bash
+# Install dependencies
+npm install
 
-The tool generates a CSV and a Chart with two sections:
+# Start the application
+npm start
+```
 
-1.  **Brightness (Top Chart)**:
-    * **Peak Nits**: The maximum brightness of the brightest pixel in the frame (or sampled area).
-    * **Avg Nits**: The average brightness of the entire 16:9 frame (including black bars).
-    * *Axis is plotted in PQ space but labeled in Nits.*
+## Usage
 
-2.  **Gamut Ratio (Bottom Chart)**:
-    * **Rec.709 / Dark**: Pixels that are either dark (< 1.0 nits), low confidence, or within the standard Rec.709 triangle.
-    * **P3**: Pixels that exceed Rec.709 but fall within DCI-P3.
-    * **Rec.2020**: Pixels that exceed DCI-P3 boundaries.
+1. Click **"Select Video"** to choose an HDR video file (MKV, MP4, MOV, TS)
+2. Wait for the analysis to complete (progress is shown in the progress bar)
+3. View the generated 3-panel chart
+4. Click **"Save As"** to export the chart as a PNG image
 
-## ⚙️ Technical Details
+## How It Works
 
-### Why "Pad to 16:9"?
-Averages calculated on cropped frames (e.g., 3840x1600) are artificially inflated. By padding to 3840x2160, this tool provides standardized metrics comparable across different aspect ratios.
+### Analysis Pipeline
 
-### The "Confidence Filter"
-Dark scenes in HDR often contain sensor noise. A simple brightness threshold isn't enough. This tool applies a secondary check on the total XYZ energy. If a pixel is "bright" but has extremely low chromatic energy, it is treated as noise (Rec.709) rather than false high-saturation color.
+1. **FFprobe** extracts the video duration
+2. **FFmpeg** decodes the video at 1 fps to raw 10-bit planar format (gbrp10le)
+3. Each frame is padded to 3840x2160 (4K) resolution
+4. Per-pixel analysis:
+   - PQ EOTF (ST 2084) converts signal values to linear light
+   - Luminance is calculated using Rec.2020 coefficients
+   - CIE xy chromaticity is computed for gamut classification
+5. Results are aggregated and rendered as a chart
 
-## 📝 License
+### Chart Panels
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+1. **Brightness Over Time** - Y-axis in PQ space with nit labels (0 to 10000), showing peak (orange) and average (blue) brightness
+2. **Gamut Ratio** - Stacked area chart showing proportion of pixels in Rec.709 (gray), DCI-P3 (yellow), and Rec.2020 (red)
+3. **APL Histogram** - Distribution of Average Picture Level values across frames
+
+## Building for Distribution
+
+```bash
+# Build for current platform
+npm run build
+
+# Build for specific platform
+npm run build:win
+npm run build:mac
+npm run build:linux
+```
+
+Built packages will be output to the `dist/` directory.
+
+## Technical Details
+
+- Electron with context isolation and secure IPC
+- Analysis runs in the main process (CPU-intensive work)
+- Chart generation uses node-canvas (Canvas 2D API)
+- FFmpeg binary bundled via ffmpeg-static and electron-builder extraResources
+
+## License
+
+MIT
