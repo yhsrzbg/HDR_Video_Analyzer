@@ -24,9 +24,12 @@ contextBridge.exposeInMainWorld('hdrAPI', {
 
   /**
    * Register a callback for analysis progress updates.
+   * Removes any previously registered listeners before adding the new one
+   * to prevent listener accumulation on repeated calls.
    * @param {Function} callback - (data: { percent, time, peak }) => void
    */
   onAnalysisProgress: (callback) => {
+    ipcRenderer.removeAllListeners('analysis-progress');
     ipcRenderer.on('analysis-progress', (event, data) => {
       callback(data);
     });

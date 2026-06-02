@@ -8,6 +8,7 @@ const { generateChart } = require('./analysis/chart-generator');
 
 let mainWindow = null;
 let lastChartBuffer = null;
+let activeAnalysisWorker = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -26,6 +27,12 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 
   mainWindow.on('closed', () => {
+    // Kill any running analysis worker when the window closes
+    if (activeAnalysisWorker) {
+      activeAnalysisWorker.postMessage({ type: 'abort' });
+      activeAnalysisWorker.terminate();
+      activeAnalysisWorker = null;
+    }
     mainWindow = null;
   });
 }
@@ -65,12 +72,25 @@ ipcMain.handle('select-video', async () => {
 
 // Start analysis
 ipcMain.handle('start-analysis', async (event, videoPath) => {
+  // Guard against starting a second analysis while one is running
+  if (activeAnalysisWorker) {
+    return { success: false, error: 'An analysis is already in progress. Please wait for it to finish.' };
+  }
+
   try {
-    const analysisData = await analyzeVideo(videoPath, { useSubsample: true }, (percent, time, peak) => {
+    const analysisPromise = analyzeVideo(videoPath, { useSubsample: true }, (percent, time, peak) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('analysis-progress', { percent, time, peak });
       }
     });
+
+    // Store the worker reference for lifecycle management
+    activeAnalysisWorker = analysisPromise.worker;
+
+    const analysisData = await analysisPromise;
+
+    // Clear the worker reference now that analysis is complete
+    activeAnalysisWorker = null;
 
     // Generate chart
     const chartBuffer = generateChart(analysisData);
@@ -80,6 +100,7 @@ ipcMain.handle('start-analysis', async (event, videoPath) => {
     const base64 = chartBuffer.toString('base64');
     return { success: true, imageData: `data:image/png;base64,${base64}` };
   } catch (err) {
+    activeAnalysisWorker = null;
     return { success: false, error: err.message };
   }
 });

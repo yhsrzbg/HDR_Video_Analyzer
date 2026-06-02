@@ -1,5 +1,6 @@
 'use strict';
 
+const { Worker } = require('worker_threads');
 const { spawn } = require('child_process');
 const path = require('path');
 
@@ -25,6 +26,10 @@ const Y_COEFF = [0.262700, 0.677998, 0.059302];
 // Gamut Vertices (CIE xy)
 const GAMUT_709 = [[0.64, 0.33], [0.30, 0.60], [0.15, 0.06]];
 const GAMUT_P3 = [[0.68, 0.32], [0.265, 0.69], [0.15, 0.06]];
+
+// Minimum XYZ sum threshold for confidence mask
+// Pixels with sum below this are classified as Rec.709 (matching Python behavior)
+const MIN_SUM_THRESHOLD = 0.01;
 
 /**
  * PQ EOTF: convert normalized PQ signal (0-1) to linear light (0-1)
@@ -126,8 +131,7 @@ function resolveFfmpegPath() {
     return ffmpegStatic;
   } catch (e) {
     // Packaged app - look in resources
-    const { app } = require('electron');
-    const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), '..', 'resources');
+    const resourcesPath = process.resourcesPath || path.join(__dirname, '..', '..', 'resources');
     const ext = process.platform === 'win32' ? '.exe' : '';
     return path.join(resourcesPath, `ffmpeg${ext}`);
   }
@@ -135,12 +139,22 @@ function resolveFfmpegPath() {
 
 function resolveFfprobePath() {
   try {
-    const ffmpegStatic = require('ffmpeg-static');
-    // ffprobe is typically in the same directory as ffmpeg
-    const dir = path.dirname(ffmpegStatic);
-    const ext = process.platform === 'win32' ? '.exe' : '';
-    return path.join(dir, `ffprobe${ext}`);
+    // Use ffprobe-static package which provides the ffprobe binary path
+    const ffprobeStatic = require('ffprobe-static');
+    return ffprobeStatic.path;
   } catch (e) {
+    // Fallback: check same directory as ffmpeg-static
+    try {
+      const ffmpegStatic = require('ffmpeg-static');
+      const dir = path.dirname(ffmpegStatic);
+      const ext = process.platform === 'win32' ? '.exe' : '';
+      const ffprobePath = path.join(dir, `ffprobe${ext}`);
+      if (require('fs').existsSync(ffprobePath)) {
+        return ffprobePath;
+      }
+    } catch (e2) {
+      // ignore
+    }
     // Fallback to system PATH
     return 'ffprobe';
   }
@@ -208,7 +222,7 @@ function processFrame(frameData, width, height, useSubsample) {
         const Z = M_2020_to_XYZ[2][0] * rLin + M_2020_to_XYZ[2][1] * gLin + M_2020_to_XYZ[2][2] * bLin;
 
         const sum = X + Y + Z;
-        if (sum > 0.0) {
+        if (sum > MIN_SUM_THRESHOLD) {
           const cx = X / sum;
           const cy = Y / sum;
 
@@ -223,7 +237,7 @@ function processFrame(frameData, width, height, useSubsample) {
             count2020only++;
           }
         } else {
-          // Very dark with no color info - treat as 709
+          // Low confidence chromaticity - default to Rec.709 (matches Python behavior)
           count709++;
         }
       } else {
@@ -235,7 +249,6 @@ function processFrame(frameData, width, height, useSubsample) {
   const avgNits = sumNits / totalSampledPixels;
 
   // Gamut ratios (dark pixels counted as 709)
-  const brightPixels = count709 + countP3only + count2020only;
   const r709 = (count709 + countDark) / totalSampledPixels;
   const rp3 = countP3only / totalSampledPixels;
   const r2020 = count2020only / totalSampledPixels;
@@ -244,94 +257,52 @@ function processFrame(frameData, width, height, useSubsample) {
 }
 
 /**
- * Run the full HDR analysis on a video file.
+ * Run the full HDR analysis on a video file using a worker thread.
+ * The heavy frame processing is offloaded to a Worker to keep the main thread responsive.
  * @param {string} videoPath - Path to the video file
  * @param {Object} options - { useSubsample: boolean }
  * @param {Function} onProgress - Callback (percent, timeSeconds, peakNits)
- * @returns {Promise<Object>} Analysis results
+ * @returns {Promise<Object>} Analysis results with a terminate() method on the promise
  */
 function analyzeVideo(videoPath, options, onProgress) {
   const { useSubsample = true } = options || {};
 
-  return new Promise(async (resolve, reject) => {
-    try {
-      const ffmpegPath = resolveFfmpegPath();
-      const ffprobePath = resolveFfprobePath();
-
-      // Get video duration
-      const totalDuration = await getVideoDuration(videoPath, ffprobePath);
-
-      // Frame parameters
-      const width = 3840;
-      const height = 2160;
-      const frameBytes = width * height * 3 * 2; // 3 channels, 2 bytes per sample (uint16)
-      const tStep = 1.0; // 1 fps sampling
-
-      // Build ffmpeg command
-      const args = [
-        '-i', videoPath,
-        '-vf', `fps=1,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
-        '-pix_fmt', 'gbrp10le',
-        '-f', 'rawvideo',
-        'pipe:1'
-      ];
-
-      const proc = spawn(ffmpegPath, args, {
-        stdio: ['ignore', 'pipe', 'ignore']
-      });
-
-      const results = [];
-      let frameIndex = 0;
-      let buffer = Buffer.alloc(0);
-
-      proc.stdout.on('data', (chunk) => {
-        buffer = Buffer.concat([buffer, chunk]);
-
-        while (buffer.length >= frameBytes) {
-          const frameData = buffer.subarray(0, frameBytes);
-          buffer = buffer.subarray(frameBytes);
-
-          const frameResult = processFrame(frameData, width, height, useSubsample);
-          const timeSeconds = frameIndex * tStep;
-
-          results.push({
-            time: timeSeconds,
-            peak: frameResult.peak,
-            avg: frameResult.avg,
-            r709: frameResult.r709,
-            rp3: frameResult.rp3,
-            r2020: frameResult.r2020
-          });
-
-          const progress = Math.min((timeSeconds / totalDuration) * 100, 100);
-          if (onProgress) {
-            onProgress(progress, timeSeconds, frameResult.peak);
-          }
-
-          frameIndex++;
-        }
-      });
-
-      proc.on('close', (code) => {
-        if (results.length === 0) {
-          reject(new Error('No frames were processed. Check that the file is a valid HDR video.'));
-          return;
-        }
-        resolve({
-          results,
-          totalDuration,
-          filename: path.basename(videoPath)
-        });
-      });
-
-      proc.on('error', (err) => {
-        reject(new Error(`Failed to start ffmpeg: ${err.message}`));
-      });
-
-    } catch (err) {
-      reject(err);
-    }
+  const workerPath = path.join(__dirname, 'analysis-worker.js');
+  const worker = new Worker(workerPath, {
+    workerData: { videoPath, useSubsample }
   });
+
+  const promise = new Promise((resolve, reject) => {
+    worker.on('message', (msg) => {
+      switch (msg.type) {
+        case 'progress':
+          if (onProgress) {
+            onProgress(msg.percent, msg.time, msg.peak);
+          }
+          break;
+        case 'complete':
+          resolve(msg.data);
+          break;
+        case 'error':
+          reject(new Error(msg.error));
+          break;
+      }
+    });
+
+    worker.on('error', (err) => {
+      reject(err);
+    });
+
+    worker.on('exit', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Analysis worker exited with code ${code}`));
+      }
+    });
+  });
+
+  // Attach the worker reference so callers can abort the analysis
+  promise.worker = worker;
+  return promise;
 }
 
 module.exports = {
@@ -348,5 +319,6 @@ module.exports = {
   M_2020_to_XYZ,
   Y_COEFF,
   GAMUT_709,
-  GAMUT_P3
+  GAMUT_P3,
+  MIN_SUM_THRESHOLD
 };

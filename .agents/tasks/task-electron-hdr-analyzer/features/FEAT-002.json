@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-002",
+  "type": "fix",
+  "description": "Address code review findings: move frame processing to worker_threads, manage FFmpeg process lifecycle, fix gamut confidence-mask divergence, optimize buffer growth, and fix progress listener leak.",
+  "status": "in_progress",
+  "steps": [
+    "Create electron-app/analysis/analysis-worker.js that uses worker_threads to run ffmpeg spawn and frame processing, posting progress and results back to the main thread",
+    "Refactor electron-app/analysis/hdr-analyzer.js analyzeVideo to delegate to the worker, fix gamut confidence-mask threshold (sum > 0.01), and use pre-allocated buffer with write offset",
+    "Update electron-app/main.js to store active analysis worker/process reference, kill on window close, and guard against starting a second analysis while one is running",
+    "Fix electron-app/preload.js onAnalysisProgress to remove prior listeners before registering new ones"
+  ],
+  "acceptance_criteria": [
+    "Frame processing runs in a worker_threads Worker, not on the main thread",
+    "FFmpeg process is killed when window closes or new analysis starts",
+    "Pixels with XYZ sum <= 0.01 are classified as Rec.709",
+    "Buffer uses pre-allocated approach instead of Buffer.concat on every chunk",
+    "onAnalysisProgress removes existing listeners before adding new one",
+    "All modified JS files pass node --check syntax validation"
+  ],
+  "verification": [
+    "Run 'NODE_OPTIONS='' node --check electron-app/analysis/analysis-worker.js'",
+    "Run 'NODE_OPTIONS='' node --check electron-app/analysis/hdr-analyzer.js'",
+    "Run 'NODE_OPTIONS='' node --check electron-app/main.js'",
+    "Run 'NODE_OPTIONS='' node --check electron-app/preload.js'"
+  ],
+  "blocked_reason": null,
+  "findings": null
+}
