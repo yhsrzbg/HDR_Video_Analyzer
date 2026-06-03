@@ -103,6 +103,10 @@ ipcMain.handle('save-image', async (event, dataUrl) => {
     return { success: false, error: 'No chart image to save' };
   }
 
+  if (!dataUrl.startsWith('data:image/png;base64,')) {
+    return { success: false, error: 'Invalid image data' };
+  }
+
   const result = await dialog.showSaveDialog(mainWindow, {
     title: 'Save Chart Image',
     defaultPath: 'hdr-analysis.png',
