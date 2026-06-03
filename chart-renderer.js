@@ -1,7 +1,22 @@
 'use strict';
 
-const { createCanvas } = require('canvas');
-const { pqInverse } = require('./hdr-analyzer');
+// PQ constants (copied from hdr-analyzer.js since require() is unavailable in renderer)
+const m1 = 2610 / 16384;
+const m2 = (2523 / 4096) * 128;
+const c1 = 3424 / 4096;
+const c2 = (2413 / 4096) * 32;
+const c3 = (2392 / 4096) * 32;
+
+/**
+ * PQ Inverse: convert nits to PQ signal value (for chart axis)
+ * @param {number} nits - Luminance in nits
+ * @returns {number} PQ signal value (0-1)
+ */
+function pqInverse(nits) {
+  const y = Math.max(Math.min(nits / 10000.0, 1.0), 1e-10);
+  const v = Math.pow(y, m1);
+  return Math.pow((c1 + c2 * v) / (1 + c3 * v), m2);
+}
 
 // Chart dimensions and layout
 const CHART_WIDTH = 1400;
@@ -25,13 +40,16 @@ const COLORS = {
 };
 
 /**
- * Generate a 3-panel chart image from analysis results.
+ * Draw a 3-panel HDR analysis chart onto a canvas element.
+ * @param {HTMLCanvasElement} canvas - The canvas element to draw on
  * @param {Object} analysisData - { results, totalDuration, filename }
- * @returns {Buffer} PNG image buffer
  */
-function generateChart(analysisData) {
+function drawChart(canvas, analysisData) {
   const { results, filename } = analysisData;
-  const canvas = createCanvas(CHART_WIDTH, CHART_HEIGHT);
+
+  canvas.width = CHART_WIDTH;
+  canvas.height = CHART_HEIGHT;
+
   const ctx = canvas.getContext('2d');
 
   // Background
@@ -42,7 +60,7 @@ function generateChart(analysisData) {
   ctx.fillStyle = COLORS.text;
   ctx.font = 'bold 14px Arial, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`HDR Analysis: ${filename}`, CHART_WIDTH / 2, 30);
+  ctx.fillText('HDR Analysis: ' + filename, CHART_WIDTH / 2, 30);
 
   // Calculate panel dimensions
   const plotWidth = CHART_WIDTH - MARGIN.left - MARGIN.right;
@@ -50,35 +68,33 @@ function generateChart(analysisData) {
   const panelHeight = totalPlotHeight / 3;
 
   // Extract data arrays
-  const times = results.map(r => r.time);
-  const peaks = results.map(r => r.peak);
-  const avgs = results.map(r => r.avg);
-  const r709s = results.map(r => r.r709);
-  const rp3s = results.map(r => r.rp3);
-  const r2020s = results.map(r => r.r2020);
+  const times = results.map(function(r) { return r.time; });
+  const peaks = results.map(function(r) { return r.peak; });
+  const avgs = results.map(function(r) { return r.avg; });
+  const r709s = results.map(function(r) { return r.r709; });
+  const rp3s = results.map(function(r) { return r.rp3; });
+  const r2020s = results.map(function(r) { return r.r2020; });
 
-  const maxTime = Math.max(...times);
+  const maxTime = Math.max.apply(null, times);
 
   // Panel 1: Brightness over time (PQ space)
-  const panel1Y = MARGIN.top;
+  var panel1Y = MARGIN.top;
   drawBrightnessPanel(ctx, MARGIN.left, panel1Y, plotWidth, panelHeight, times, peaks, avgs, maxTime);
 
   // Panel 2: Gamut ratio stacked area
-  const panel2Y = panel1Y + panelHeight + PANEL_GAP;
+  var panel2Y = panel1Y + panelHeight + PANEL_GAP;
   drawGamutPanel(ctx, MARGIN.left, panel2Y, plotWidth, panelHeight, times, r709s, rp3s, r2020s, maxTime);
 
   // Panel 3: APL histogram
-  const panel3Y = panel2Y + panelHeight + PANEL_GAP;
+  var panel3Y = panel2Y + panelHeight + PANEL_GAP;
   drawAPLHistogramPanel(ctx, MARGIN.left, panel3Y, plotWidth, panelHeight, avgs);
-
-  return canvas.toBuffer('image/png');
 }
 
 /**
  * Draw Panel 1: Brightness over time with PQ-space Y-axis
  */
 function drawBrightnessPanel(ctx, x, y, width, height, times, peaks, avgs, maxTime) {
-  const yTicks = [0, 0.1, 1, 10, 50, 100, 203, 500, 1000, 4000, 10000];
+  var yTicks = [0, 0.1, 1, 10, 50, 100, 203, 500, 1000, 4000, 10000];
 
   // Draw panel border and grid
   ctx.strokeStyle = COLORS.grid;
@@ -90,9 +106,10 @@ function drawBrightnessPanel(ctx, x, y, width, height, times, peaks, avgs, maxTi
   ctx.textAlign = 'right';
   ctx.fillStyle = COLORS.text;
 
-  for (const tick of yTicks) {
-    const pqVal = pqInverse(tick);
-    const py = y + height - (pqVal * height);
+  for (var t = 0; t < yTicks.length; t++) {
+    var tick = yTicks[t];
+    var pqVal = pqInverse(tick);
+    var py = y + height - (pqVal * height);
     if (py >= y && py <= y + height) {
       ctx.beginPath();
       ctx.strokeStyle = COLORS.grid;
@@ -116,12 +133,12 @@ function drawBrightnessPanel(ctx, x, y, width, height, times, peaks, avgs, maxTi
   ctx.beginPath();
   ctx.strokeStyle = COLORS.peakLine;
   ctx.lineWidth = 1;
-  for (let i = 0; i < times.length; i++) {
-    const px = x + (times[i] / maxTime) * width;
-    const pqVal = pqInverse(peaks[i]);
-    const py = y + height - (pqVal * height);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
+  for (var i = 0; i < times.length; i++) {
+    var px = x + (times[i] / maxTime) * width;
+    var pqV = pqInverse(peaks[i]);
+    var ppy = y + height - (pqV * height);
+    if (i === 0) ctx.moveTo(px, ppy);
+    else ctx.lineTo(px, ppy);
   }
   ctx.stroke();
 
@@ -129,18 +146,18 @@ function drawBrightnessPanel(ctx, x, y, width, height, times, peaks, avgs, maxTi
   ctx.beginPath();
   ctx.strokeStyle = COLORS.avgLine;
   ctx.lineWidth = 1;
-  for (let i = 0; i < times.length; i++) {
-    const px = x + (times[i] / maxTime) * width;
-    const pqVal = pqInverse(avgs[i]);
-    const py = y + height - (pqVal * height);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
+  for (var i = 0; i < times.length; i++) {
+    var px = x + (times[i] / maxTime) * width;
+    var pqV = pqInverse(avgs[i]);
+    var ppy = y + height - (pqV * height);
+    if (i === 0) ctx.moveTo(px, ppy);
+    else ctx.lineTo(px, ppy);
   }
   ctx.stroke();
 
   // Legend
-  const legendX = x + width - 150;
-  const legendY = y + 15;
+  var legendX = x + width - 150;
+  var legendY = y + 15;
   ctx.font = '11px Arial, sans-serif';
   ctx.textAlign = 'left';
 
@@ -161,16 +178,16 @@ function drawBrightnessPanel(ctx, x, y, width, height, times, peaks, avgs, maxTi
   ctx.fillText('Avg (Nits)', legendX + 25, legendY + 22);
 
   // Stats box (bottom right)
-  const maxCLL = Math.max(...peaks);
-  const aveCLL = peaks.reduce((a, b) => a + b, 0) / peaks.length;
-  const maxFALL = Math.max(...avgs);
-  const aveFALL = avgs.reduce((a, b) => a + b, 0) / avgs.length;
+  var maxCLL = Math.max.apply(null, peaks);
+  var aveCLL = peaks.reduce(function(a, b) { return a + b; }, 0) / peaks.length;
+  var maxFALL = Math.max.apply(null, avgs);
+  var aveFALL = avgs.reduce(function(a, b) { return a + b; }, 0) / avgs.length;
 
-  const statsLines = [
-    `MaxCLL: ${Math.round(maxCLL)} nits`,
-    `AveCLL: ${Math.round(aveCLL)} nits`,
-    `MaxFALL: ${Math.round(maxFALL)} nits`,
-    `AveFALL: ${Math.round(aveFALL)} nits`
+  var statsLines = [
+    'MaxCLL: ' + Math.round(maxCLL) + ' nits',
+    'AveCLL: ' + Math.round(aveCLL) + ' nits',
+    'MaxFALL: ' + Math.round(maxFALL) + ' nits',
+    'AveFALL: ' + Math.round(aveFALL) + ' nits'
   ];
 
   drawStatsBox(ctx, x + width - 10, y + height - 10, statsLines, 'right', 'bottom');
@@ -189,8 +206,8 @@ function drawGamutPanel(ctx, x, y, width, height, times, r709s, rp3s, r2020s, ma
   ctx.font = '10px Arial, sans-serif';
   ctx.textAlign = 'right';
   ctx.fillStyle = COLORS.text;
-  for (let tick = 0; tick <= 1; tick += 0.2) {
-    const py = y + height - (tick * height);
+  for (var tick = 0; tick <= 1; tick += 0.2) {
+    var py = y + height - (tick * height);
     ctx.beginPath();
     ctx.strokeStyle = COLORS.grid;
     ctx.moveTo(x, py);
@@ -215,22 +232,22 @@ function drawGamutPanel(ctx, x, y, width, height, times, r709s, rp3s, r2020s, ma
   ctx.fillText('Time (s)', x + width / 2, y + height + 18);
 
   // Draw stacked areas (bottom to top: 709, P3, 2020)
-  const numPoints = times.length;
+  var numPoints = times.length;
   if (numPoints < 2) return;
 
   // Rec.2020 layer (top) - from (709+p3) to (709+p3+2020)
   ctx.beginPath();
   ctx.moveTo(x, y + height);
-  for (let i = 0; i < numPoints; i++) {
-    const px = x + (times[i] / maxTime) * width;
-    const stackVal = r709s[i] + rp3s[i] + r2020s[i];
-    const py = y + height - (stackVal * height);
+  for (var i = 0; i < numPoints; i++) {
+    var px = x + (times[i] / maxTime) * width;
+    var stackVal = r709s[i] + rp3s[i] + r2020s[i];
+    var py = y + height - (stackVal * height);
     ctx.lineTo(px, py);
   }
-  for (let i = numPoints - 1; i >= 0; i--) {
-    const px = x + (times[i] / maxTime) * width;
-    const stackVal = r709s[i] + rp3s[i];
-    const py = y + height - (stackVal * height);
+  for (var i = numPoints - 1; i >= 0; i--) {
+    var px = x + (times[i] / maxTime) * width;
+    var stackVal = r709s[i] + rp3s[i];
+    var py = y + height - (stackVal * height);
     ctx.lineTo(px, py);
   }
   ctx.closePath();
@@ -240,15 +257,15 @@ function drawGamutPanel(ctx, x, y, width, height, times, r709s, rp3s, r2020s, ma
   // P3 layer (middle) - from 709 to (709+p3)
   ctx.beginPath();
   ctx.moveTo(x, y + height);
-  for (let i = 0; i < numPoints; i++) {
-    const px = x + (times[i] / maxTime) * width;
-    const stackVal = r709s[i] + rp3s[i];
-    const py = y + height - (stackVal * height);
+  for (var i = 0; i < numPoints; i++) {
+    var px = x + (times[i] / maxTime) * width;
+    var stackVal = r709s[i] + rp3s[i];
+    var py = y + height - (stackVal * height);
     ctx.lineTo(px, py);
   }
-  for (let i = numPoints - 1; i >= 0; i--) {
-    const px = x + (times[i] / maxTime) * width;
-    const py = y + height - (r709s[i] * height);
+  for (var i = numPoints - 1; i >= 0; i--) {
+    var px = x + (times[i] / maxTime) * width;
+    var py = y + height - (r709s[i] * height);
     ctx.lineTo(px, py);
   }
   ctx.closePath();
@@ -258,9 +275,9 @@ function drawGamutPanel(ctx, x, y, width, height, times, r709s, rp3s, r2020s, ma
   // Rec.709 layer (bottom)
   ctx.beginPath();
   ctx.moveTo(x, y + height);
-  for (let i = 0; i < numPoints; i++) {
-    const px = x + (times[i] / maxTime) * width;
-    const py = y + height - (r709s[i] * height);
+  for (var i = 0; i < numPoints; i++) {
+    var px = x + (times[i] / maxTime) * width;
+    var py = y + height - (r709s[i] * height);
     ctx.lineTo(px, py);
   }
   ctx.lineTo(x + (times[numPoints - 1] / maxTime) * width, y + height);
@@ -269,8 +286,8 @@ function drawGamutPanel(ctx, x, y, width, height, times, r709s, rp3s, r2020s, ma
   ctx.fill();
 
   // Legend
-  const legendX = x + 10;
-  const legendY = y + height - 10;
+  var legendX = x + 10;
+  var legendY = y + height - 10;
   ctx.font = '11px Arial, sans-serif';
   ctx.textAlign = 'left';
 
@@ -298,18 +315,18 @@ function drawGamutPanel(ctx, x, y, width, height, times, r709s, rp3s, r2020s, ma
  */
 function drawAPLHistogramPanel(ctx, x, y, width, height, avgs) {
   // Calculate APL values: pqInverse(avg_nits) * 100
-  const aplData = avgs.map(avg => pqInverse(avg) * 100.0);
+  var aplData = avgs.map(function(avg) { return pqInverse(avg) * 100.0; });
 
   // Build histogram (100 bins, range 0-100)
-  const numBins = 100;
-  const bins = new Array(numBins).fill(0);
-  for (const apl of aplData) {
-    const binIdx = Math.min(Math.floor(apl), numBins - 1);
+  var numBins = 100;
+  var bins = new Array(numBins).fill(0);
+  for (var a = 0; a < aplData.length; a++) {
+    var binIdx = Math.min(Math.floor(aplData[a]), numBins - 1);
     if (binIdx >= 0) {
       bins[binIdx]++;
     }
   }
-  const maxBinCount = Math.max(...bins, 1);
+  var maxBinCount = Math.max.apply(null, bins.concat([1]));
 
   // Draw panel border
   ctx.strokeStyle = COLORS.grid;
@@ -320,10 +337,10 @@ function drawAPLHistogramPanel(ctx, x, y, width, height, avgs) {
   ctx.font = '10px Arial, sans-serif';
   ctx.textAlign = 'right';
   ctx.fillStyle = COLORS.text;
-  const yTickCount = 5;
-  for (let i = 0; i <= yTickCount; i++) {
-    const val = (maxBinCount / yTickCount) * i;
-    const py = y + height - (i / yTickCount) * height;
+  var yTickCount = 5;
+  for (var i = 0; i <= yTickCount; i++) {
+    var val = (maxBinCount / yTickCount) * i;
+    var py = y + height - (i / yTickCount) * height;
     ctx.beginPath();
     ctx.strokeStyle = COLORS.grid;
     ctx.moveTo(x, py);
@@ -349,20 +366,20 @@ function drawAPLHistogramPanel(ctx, x, y, width, height, avgs) {
 
   // X-axis tick labels
   ctx.font = '10px Arial, sans-serif';
-  for (let tick = 0; tick <= 100; tick += 20) {
-    const px = x + (tick / 100) * width;
+  for (var tick = 0; tick <= 100; tick += 20) {
+    var px = x + (tick / 100) * width;
     ctx.fillText(tick.toString(), px, y + height + 14);
   }
 
   // Draw histogram bars
-  const barWidth = width / numBins;
+  var barWidth = width / numBins;
   ctx.fillStyle = COLORS.histogram;
   ctx.globalAlpha = 0.7;
-  for (let i = 0; i < numBins; i++) {
+  for (var i = 0; i < numBins; i++) {
     if (bins[i] > 0) {
-      const barHeight = (bins[i] / maxBinCount) * height;
-      const bx = x + i * barWidth;
-      const by = y + height - barHeight;
+      var barHeight = (bins[i] / maxBinCount) * height;
+      var bx = x + i * barWidth;
+      var by = y + height - barHeight;
       ctx.fillRect(bx, by, barWidth - 0.5, barHeight);
     }
   }
@@ -371,25 +388,28 @@ function drawAPLHistogramPanel(ctx, x, y, width, height, avgs) {
   // Bar borders
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
   ctx.lineWidth = 0.5;
-  for (let i = 0; i < numBins; i++) {
+  for (var i = 0; i < numBins; i++) {
     if (bins[i] > 0) {
-      const barHeight = (bins[i] / maxBinCount) * height;
-      const bx = x + i * barWidth;
-      const by = y + height - barHeight;
+      var barHeight = (bins[i] / maxBinCount) * height;
+      var bx = x + i * barWidth;
+      var by = y + height - barHeight;
       ctx.strokeRect(bx, by, barWidth - 0.5, barHeight);
     }
   }
 
   // Stats box (bottom right)
-  const meanAPL = aplData.reduce((a, b) => a + b, 0) / aplData.length;
-  const sortedAPL = [...aplData].sort((a, b) => a - b);
-  const medianAPL = sortedAPL.length % 2 === 0
-    ? (sortedAPL[sortedAPL.length / 2 - 1] + sortedAPL[sortedAPL.length / 2]) / 2
-    : sortedAPL[Math.floor(sortedAPL.length / 2)];
+  var meanAPL = aplData.reduce(function(a, b) { return a + b; }, 0) / aplData.length;
+  var sortedAPL = aplData.slice().sort(function(a, b) { return a - b; });
+  var medianAPL;
+  if (sortedAPL.length % 2 === 0) {
+    medianAPL = (sortedAPL[sortedAPL.length / 2 - 1] + sortedAPL[sortedAPL.length / 2]) / 2;
+  } else {
+    medianAPL = sortedAPL[Math.floor(sortedAPL.length / 2)];
+  }
 
-  const statsLines = [
-    `Average APL: ${meanAPL.toFixed(2)}%`,
-    `Median APL: ${medianAPL.toFixed(2)}%`
+  var statsLines = [
+    'Average APL: ' + meanAPL.toFixed(2) + '%',
+    'Median APL: ' + medianAPL.toFixed(2) + '%'
   ];
 
   drawStatsBox(ctx, x + width - 10, y + height - 10, statsLines, 'right', 'bottom');
@@ -400,14 +420,18 @@ function drawAPLHistogramPanel(ctx, x, y, width, height, avgs) {
  */
 function drawStatsBox(ctx, anchorX, anchorY, lines, hAlign, vAlign) {
   ctx.font = '11px Arial, sans-serif';
-  const lineHeight = 16;
-  const padding = 8;
-  const maxWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
-  const boxWidth = maxWidth + padding * 2;
-  const boxHeight = lines.length * lineHeight + padding * 2;
+  var lineHeight = 16;
+  var padding = 8;
+  var maxWidth = 0;
+  for (var i = 0; i < lines.length; i++) {
+    var w = ctx.measureText(lines[i]).width;
+    if (w > maxWidth) maxWidth = w;
+  }
+  var boxWidth = maxWidth + padding * 2;
+  var boxHeight = lines.length * lineHeight + padding * 2;
 
-  let bx = hAlign === 'right' ? anchorX - boxWidth : anchorX;
-  let by = vAlign === 'bottom' ? anchorY - boxHeight : anchorY;
+  var bx = hAlign === 'right' ? anchorX - boxWidth : anchorX;
+  var by = vAlign === 'bottom' ? anchorY - boxHeight : anchorY;
 
   // Box background
   ctx.fillStyle = COLORS.statsBox;
@@ -421,7 +445,7 @@ function drawStatsBox(ctx, anchorX, anchorY, lines, hAlign, vAlign) {
   // Text
   ctx.fillStyle = COLORS.text;
   ctx.textAlign = 'left';
-  for (let i = 0; i < lines.length; i++) {
+  for (var i = 0; i < lines.length; i++) {
     ctx.fillText(lines[i], bx + padding, by + padding + (i + 1) * lineHeight - 4);
   }
 }
@@ -441,5 +465,3 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
 }
-
-module.exports = { generateChart };

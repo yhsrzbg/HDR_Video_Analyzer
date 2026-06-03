@@ -4,10 +4,8 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { analyzeVideo } = require('./analysis/hdr-analyzer');
-const { generateChart } = require('./analysis/chart-generator');
 
 let mainWindow = null;
-let lastChartBuffer = null;
 let activeAnalysisWorker = null;
 
 function createWindow() {
@@ -92,13 +90,7 @@ ipcMain.handle('start-analysis', async (event, videoPath) => {
     // Clear the worker reference now that analysis is complete
     activeAnalysisWorker = null;
 
-    // Generate chart
-    const chartBuffer = generateChart(analysisData);
-    lastChartBuffer = chartBuffer;
-
-    // Convert to base64 for display in renderer
-    const base64 = chartBuffer.toString('base64');
-    return { success: true, imageData: `data:image/png;base64,${base64}` };
+    return { success: true, analysisData: analysisData };
   } catch (err) {
     activeAnalysisWorker = null;
     return { success: false, error: err.message };
@@ -106,8 +98,8 @@ ipcMain.handle('start-analysis', async (event, videoPath) => {
 });
 
 // Save chart image
-ipcMain.handle('save-image', async () => {
-  if (!lastChartBuffer) {
+ipcMain.handle('save-image', async (event, dataUrl) => {
+  if (!dataUrl) {
     return { success: false, error: 'No chart image to save' };
   }
 
@@ -124,7 +116,9 @@ ipcMain.handle('save-image', async () => {
   }
 
   try {
-    fs.writeFileSync(result.filePath, lastChartBuffer);
+    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    fs.writeFileSync(result.filePath, buffer);
     return { success: true, filePath: result.filePath };
   } catch (err) {
     return { success: false, error: err.message };

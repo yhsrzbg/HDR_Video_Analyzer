@@ -24,7 +24,9 @@ btnSelect.addEventListener('click', async () => {
 });
 
 btnSave.addEventListener('click', async () => {
-  const result = await window.hdrAPI.saveImage();
+  const chartCanvas = document.getElementById('chart-canvas');
+  const dataUrl = chartCanvas.toDataURL('image/png');
+  const result = await window.hdrAPI.saveImage(dataUrl);
   if (result.success) {
     setStatus(`Chart saved to: ${result.filePath}`);
   } else if (result.error !== 'Save cancelled') {
@@ -53,20 +55,19 @@ async function startAnalysis(videoPath) {
   progressText.textContent = 'Starting analysis...';
 
   // Clear previous content
-  content.innerHTML = '';
+  placeholder.style.display = 'none';
+  const chartCanvas = document.getElementById('chart-canvas');
+  chartCanvas.style.display = 'none';
   setStatus(`Analyzing: ${getFilename(videoPath)}`);
 
   try {
     const result = await window.hdrAPI.startAnalysis(videoPath);
 
     if (result.success) {
-      // Display chart image
-      const img = document.createElement('img');
-      img.className = 'chart-image';
-      img.src = result.imageData;
-      img.alt = 'HDR Analysis Chart';
-      content.innerHTML = '';
-      content.appendChild(img);
+      // Draw chart on canvas
+      placeholder.style.display = 'none';
+      chartCanvas.style.display = 'block';
+      drawChart(chartCanvas, result.analysisData);
 
       btnSave.disabled = false;
       setStatus(`Analysis complete: ${getFilename(videoPath)}`);
@@ -91,7 +92,16 @@ function setStatus(text) {
 }
 
 function showError(message) {
-  content.innerHTML = `<div class="error-message">${escapeHtml(message)}</div>`;
+  const chartCanvas = document.getElementById('chart-canvas');
+  chartCanvas.style.display = 'none';
+  placeholder.style.display = 'none';
+  // Remove any previous error message
+  const existingError = content.querySelector('.error-message');
+  if (existingError) existingError.remove();
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'error-message';
+  errorDiv.textContent = message;
+  content.appendChild(errorDiv);
 }
 
 function getFilename(filePath) {

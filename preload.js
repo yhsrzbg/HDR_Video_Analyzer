@@ -18,9 +18,10 @@ contextBridge.exposeInMainWorld('hdrAPI', {
 
   /**
    * Save the generated chart image to disk.
+   * @param {string} dataUrl - PNG data URL from canvas.toDataURL()
    * @returns {Promise<Object>} { success, filePath } or { success, error }
    */
-  saveImage: () => ipcRenderer.invoke('save-image'),
+  saveImage: (dataUrl) => ipcRenderer.invoke('save-image', dataUrl),
 
   /**
    * Register a callback for analysis progress updates.
