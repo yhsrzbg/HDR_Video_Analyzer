@@ -41,5 +41,5 @@ When adding any new bundled binary, update **both** `resolveBinaries()` in `main
 ## Conventions
 
 - CommonJS (`require`/`module.exports`), `'use strict'`, Node core modules imported with the `node:` prefix.
-- User-facing UI strings are in Chinese; keep that when editing menu/prompt/button text.
+- User-facing UI strings are in English. The cancellation sentinel is the literal string `'CANCELLED'`, thrown in `analyze()` and matched in `main.js` — keep the two in sync if you rename it.
 - The renderer runs under a strict CSP (`index.html` `<meta>` tag) with `script-src 'self'` — keep scripts in external files, no inline `<script>` with logic beyond loading.

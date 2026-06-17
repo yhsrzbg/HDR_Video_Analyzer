@@ -61,7 +61,7 @@ async function beginAnalysis(videoPath) {
   els.dropErr.textContent = '';
   const ext = '.' + baseName(videoPath).split('.').pop().toLowerCase();
   if (!VALID_EXT.includes(ext)) {
-    els.dropErr.textContent = `不支持的格式 "${ext}"。支持: ${VALID_EXT.join(', ')}`;
+    els.dropErr.textContent = `Unsupported format "${ext}". Supported: ${VALID_EXT.join(', ')}`;
     return;
   }
 
@@ -69,14 +69,14 @@ async function beginAnalysis(videoPath) {
   els.progFname.textContent = baseName(videoPath);
   els.progPct.textContent = '0.0%';
   els.progBar.style.width = '0%';
-  els.progTime.textContent = '时间: 0.0s';
+  els.progTime.textContent = 'Time: 0.0s';
   els.progPeak.textContent = 'Peak: 0 nits';
   show('progress');
 
   api.onProgress(({ percent, time, peak }) => {
     els.progPct.textContent = percent.toFixed(1) + '%';
     els.progBar.style.width = Math.min(percent, 100) + '%';
-    els.progTime.textContent = '时间: ' + time.toFixed(1) + 's';
+    els.progTime.textContent = 'Time: ' + time.toFixed(1) + 's';
     els.progPeak.textContent = 'Peak: ' + Math.round(peak) + ' nits';
   });
 
@@ -85,7 +85,7 @@ async function beginAnalysis(videoPath) {
 
   if (!res.success) {
     show('drop');
-    els.dropErr.textContent = res.cancelled ? '' : ('分析失败: ' + (res.error || '未知错误'));
+    els.dropErr.textContent = res.cancelled ? '' : ('Analysis failed: ' + (res.error || 'unknown error'));
     return;
   }
 
@@ -120,7 +120,7 @@ els.dropzone.addEventListener('drop', (e) => {
   if (!file) return;
   const p = api.getPathForFile(file);
   if (p) beginAnalysis(p);
-  else els.dropErr.textContent = '无法读取文件路径，请改用点击选择。';
+  else els.dropErr.textContent = 'Could not read the file path. Please use click-to-choose instead.';
 });
 
 // --- Progress screen ---
@@ -141,13 +141,13 @@ els.btnSavePng.addEventListener('click', async () => {
   if (!currentData) return;
   const dataUrl = els.canvas.toDataURL('image/png');
   const res = await api.savePng(dataUrl, stripExt(currentData.filename || 'hdr-analysis'));
-  if (res.success) flashSaved('已保存: ' + baseName(res.filePath));
-  else if (!res.cancelled) flashSaved('保存失败');
+  if (res.success) flashSaved('Saved: ' + baseName(res.filePath));
+  else if (!res.cancelled) flashSaved('Save failed');
 });
 
 els.btnSaveHtml.addEventListener('click', async () => {
   if (!currentData) return;
   const res = await api.saveHtml(currentData, stripExt(currentData.filename || 'hdr-analysis'));
-  if (res.success) flashSaved('已保存: ' + baseName(res.filePath));
-  else if (!res.cancelled) flashSaved('保存失败');
+  if (res.success) flashSaved('Saved: ' + baseName(res.filePath));
+  else if (!res.cancelled) flashSaved('Save failed');
 });

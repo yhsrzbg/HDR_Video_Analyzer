@@ -1,6 +1,6 @@
 {
   "name": "hdr-video-analyzer",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Desktop app for HDR video analysis - analyzes brightness, color gamut, and APL, then renders an interactive chart with PNG/HTML export",
   "main": "main.js",
   "scripts": {
@@ -38,6 +38,7 @@
     ],
     "win": {
       "target": "portable",
+      "icon": "assets/icon.png",
       "extraResources": [
         {
           "from": "node_modules/ffmpeg-static/ffmpeg.exe",
@@ -54,6 +55,7 @@
     },
     "mac": {
       "target": "dmg",
+      "icon": "assets/icon.png",
       "extraResources": [
         {
           "from": "node_modules/ffmpeg-static/ffmpeg",
@@ -68,6 +70,7 @@
     "linux": {
       "target": "AppImage",
       "category": "AudioVideo",
+      "icon": "assets/icon.png",
       "extraResources": [
         {
           "from": "node_modules/ffmpeg-static/ffmpeg",

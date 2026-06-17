@@ -91,15 +91,15 @@
   <section id="screen-drop" class="screen active">
     <div id="dropzone" class="dropzone">
       <div class="icon">🎬</div>
-      <h2>拖入 HDR 视频文件</h2>
-      <p>或点击此处选择文件</p>
-      <div class="hint">支持 MKV · MP4 · MOV · TS</div>
+      <h2>Drop an HDR video here</h2>
+      <p>or click to choose a file</p>
+      <div class="hint">Supports MKV · MP4 · MOV · TS</div>
     </div>
     <label class="gpu-toggle" id="gpu-toggle">
       <input type="checkbox" id="gpu-checkbox" checked>
       <span class="track"><span class="thumb"></span></span>
-      <span class="gpu-label">GPU 加速解码</span>
-      <span class="gpu-hint">优先用显卡解码，失败自动转 CPU</span>
+      <span class="gpu-label">GPU-accelerated decoding</span>
+      <span class="gpu-hint">Use the GPU when possible, fall back to CPU automatically</span>
     </label>
     <div id="drop-err" class="err"></div>
   </section>
@@ -111,21 +111,21 @@
     <div class="bar-wrap">
       <div class="bar-track"><div class="bar-fill" id="prog-bar"></div></div>
       <div class="bar-meta">
-        <span id="prog-time">时间: 0.0s</span>
+        <span id="prog-time">Time: 0.0s</span>
         <span id="prog-peak">Peak: 0 nits</span>
       </div>
     </div>
-    <button id="btn-cancel" class="accent">取消分析</button>
+    <button id="btn-cancel" class="accent">Cancel</button>
   </section>
 
   <!-- State 3: result -->
   <section id="screen-result" class="screen">
     <div class="toolbar">
-      <button id="btn-back">← 返回</button>
+      <button id="btn-back">← Back</button>
       <span class="title" id="result-title"></span>
       <span class="saved-msg" id="saved-msg"></span>
-      <button id="btn-save-png">保存 PNG</button>
-      <button id="btn-save-html" class="accent">保存 HTML</button>
+      <button id="btn-save-png">Save PNG</button>
+      <button id="btn-save-html" class="accent">Save HTML</button>
     </div>
     <div class="content">
       <canvas id="chart-canvas" class="chart-canvas"></canvas>

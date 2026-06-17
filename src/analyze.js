@@ -183,7 +183,7 @@ async function detectHdrFormat(videoPath, ffprobePath) {
     ffprobePath
   );
   const stream = streamInfo && streamInfo.streams && streamInfo.streams[0];
-  if (!stream) return { supported: false, format: '未知（无法读取视频流信息）' };
+  if (!stream) return { supported: false, format: 'Unknown (could not read video stream info)' };
 
   const transfer = (stream.color_transfer || '').toLowerCase();
   const primaries = (stream.color_primaries || '').toLowerCase();
@@ -191,7 +191,7 @@ async function detectHdrFormat(videoPath, ffprobePath) {
 
   // Dolby Vision often carries a dvhe/dvh1/dav1 codec tag.
   if (['dvhe', 'dvh1', 'dav1', 'dvav', 'dva1'].includes(tag)) {
-    return { supported: false, format: 'Dolby Vision (杜比视界)' };
+    return { supported: false, format: 'Dolby Vision' };
   }
 
   // HLG: distinct transfer curve, not PQ.
@@ -201,12 +201,12 @@ async function detectHdrFormat(videoPath, ffprobePath) {
 
   // Anything that isn't PQ is SDR (or unknown) for our purposes.
   if (transfer !== 'smpte2084') {
-    return { supported: false, format: 'SDR / 非 HDR10' };
+    return { supported: false, format: 'SDR / non-HDR10' };
   }
 
   // PQ requires Rec.2020 primaries to be a genuine HDR10 master.
   if (primaries !== 'bt2020') {
-    return { supported: false, format: 'SDR / 非标准 HDR' };
+    return { supported: false, format: 'SDR / non-standard HDR' };
   }
 
   // PQ + Rec.2020 confirmed. Now rule out dynamic-metadata formats (Dolby
@@ -222,7 +222,7 @@ async function detectHdrFormat(videoPath, ffprobePath) {
 
   for (const t of sideTypes) {
     if (t.includes('dolby') || t.includes('dovi')) {
-      return { supported: false, format: 'Dolby Vision (杜比视界)' };
+      return { supported: false, format: 'Dolby Vision' };
     }
     if (t.includes('2094') || t.includes('dynamic hdr') || t.includes('dynamic metadata')) {
       return { supported: false, format: 'HDR10+' };
@@ -324,7 +324,7 @@ function buildDecodeCandidates(useGpu, codec, platform = process.platform) {
  * Run a single ffmpeg decode pass with the given input-side args, processing
  * each frame inline. Resolves with the results array, or rejects. A decode that
  * exits non-zero or produces zero frames rejects with `decodeFailed: true` so
- * the caller can try the next strategy. Abort always rejects with '已取消'.
+ * the caller can try the next strategy. Abort always rejects with 'CANCELLED'.
  */
 function runDecode(decodeArgs, ctx) {
   const { ffmpegPath, videoPath, width, height, frameBytes, tStep,
@@ -398,7 +398,7 @@ function runDecode(decodeArgs, ctx) {
     proc.on('close', (code) => {
       if (signal) signal.removeEventListener('abort', onAbort);
       if (aborted) {
-        reject(new Error('已取消'));
+        reject(new Error('CANCELLED'));
         return;
       }
       if (code !== 0 || results.length === 0) {
@@ -437,7 +437,7 @@ async function analyze(videoPath, options, onProgress) {
   const { useSubsample = true, useGpu = false, signal } = options || {};
 
   if (signal && signal.aborted) {
-    throw new Error('已取消');
+    throw new Error('CANCELLED');
   }
 
   const ffmpegPath = (options && options.ffmpegPath) || resolveFfmpegPath();
@@ -447,7 +447,7 @@ async function analyze(videoPath, options, onProgress) {
   // Reject anything else up front with a clear message.
   const fmt = await detectHdrFormat(videoPath, ffprobePath);
   if (!fmt.supported) {
-    throw new Error(`不支持的视频格式：${fmt.format}。本工具仅支持 HDR10 (PQ/ST 2084) 视频。`);
+    throw new Error(`Unsupported video format: ${fmt.format}. This tool only supports HDR10 (PQ/ST 2084) video.`);
   }
 
   const totalDuration = await getVideoDuration(videoPath, ffprobePath);
@@ -470,7 +470,7 @@ async function analyze(videoPath, options, onProgress) {
   let lastErr = null;
 
   for (const cand of candidates) {
-    if (signal && signal.aborted) throw new Error('已取消');
+    if (signal && signal.aborted) throw new Error('CANCELLED');
     try {
       results = await runDecode(cand.args, ctx);
       usedDecoder = cand.label;
@@ -478,7 +478,7 @@ async function analyze(videoPath, options, onProgress) {
     } catch (err) {
       // A real cancellation aborts the whole analysis; a decode failure just
       // moves on to the next strategy.
-      if (err.message === '已取消') throw err;
+      if (err.message === 'CANCELLED') throw err;
       if (!err.decodeFailed) throw err;
       lastErr = err;
     }
