@@ -7,6 +7,7 @@ const { analyze } = require('./src/analyze');
 const { buildReportHtml } = require('./src/report');
 
 const VALID_EXT = ['.mkv', '.mp4', '.mov', '.ts'];
+const VALID_SAMPLE_INTERVALS = new Set([0, 1, 2]);
 
 let mainWindow = null;
 let activeAbort = null;
@@ -91,13 +92,16 @@ ipcMain.handle('start-analysis', async (event, videoPath, opts) => {
   }
 
   const useGpu = !!(opts && opts.useGpu);
+  const useSubsample = opts && opts.useSubsample === false ? false : true;
+  const requestedSampleInterval = Number(opts && opts.sampleInterval);
+  const sampleInterval = VALID_SAMPLE_INTERVALS.has(requestedSampleInterval) ? requestedSampleInterval : 1;
   const controller = new AbortController();
   activeAbort = controller;
 
   try {
     const analysisData = await analyze(
       videoPath,
-      { useSubsample: true, useGpu, signal: controller.signal, ...resolveBinaries() },
+      { useSubsample, useGpu, sampleInterval, signal: controller.signal, ...resolveBinaries() },
       (percent, time, peak) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('analysis-progress', { percent, time, peak });

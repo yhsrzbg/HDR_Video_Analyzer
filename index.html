@@ -35,24 +35,51 @@
     .dropzone .hint { font-size: 12px; color: #6b7aa0; margin-top: 4px; }
     .err { margin-top: 18px; color: #ff7b8a; font-size: 13px; min-height: 18px; text-align: center; }
 
-    /* --- GPU toggle --- */
-    .gpu-toggle {
-      display: flex; align-items: center; gap: 10px;
-      margin-top: 22px; cursor: pointer; flex-wrap: wrap; justify-content: center;
+    /* --- Analysis settings --- */
+    .analysis-settings {
+      width: min(640px, 90%);
+      margin-top: 22px;
+      padding: 16px 18px;
+      border: 1px solid #243358;
+      border-radius: 12px;
+      background: #121b34;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
     }
-    .gpu-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
-    .gpu-toggle .track {
+    .setting-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+    .setting-label { font-size: 12px; font-weight: 600; color: #cdd8ef; }
+    .setting-hint { font-size: 11px; line-height: 1.35; color: #6b7aa0; }
+    .setting-select {
+      width: 100%;
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid #2e4a7a;
+      background: #0f1830;
+      color: #e0e0e0;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+    .switch-field { justify-content: space-between; }
+    .setting-switch {
+      display: flex; align-items: center; gap: 10px;
+      cursor: pointer;
+    }
+    .setting-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .setting-switch .track {
       position: relative; width: 42px; height: 22px; border-radius: 11px;
       background: #2e3a5a; transition: background .15s; flex-shrink: 0;
     }
-    .gpu-toggle .thumb {
+    .setting-switch .thumb {
       position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
       border-radius: 50%; background: #cdd8ef; transition: transform .15s;
     }
-    .gpu-toggle input:checked + .track { background: #e94560; }
-    .gpu-toggle input:checked + .track .thumb { transform: translateX(20px); background: #fff; }
-    .gpu-toggle .gpu-label { font-size: 14px; color: #cdd8ef; }
-    .gpu-toggle .gpu-hint { font-size: 12px; color: #6b7aa0; width: 100%; text-align: center; }
+    .setting-switch input:checked + .track { background: #e94560; }
+    .setting-switch input:checked + .track .thumb { transform: translateX(20px); background: #fff; }
+    .switch-text { font-size: 13px; color: #cdd8ef; white-space: nowrap; }
+    @media (max-width: 560px) {
+      .analysis-settings { grid-template-columns: 1fr; }
+    }
 
     /* --- Progress screen --- */
     #screen-progress { align-items: center; justify-content: center; padding: 32px; gap: 26px; }
@@ -95,12 +122,33 @@
       <p>or click to choose a file</p>
       <div class="hint">Supports MKV · MP4 · MOV · TS</div>
     </div>
-    <label class="gpu-toggle" id="gpu-toggle">
-      <input type="checkbox" id="gpu-checkbox" checked>
-      <span class="track"><span class="thumb"></span></span>
-      <span class="gpu-label">GPU-accelerated decoding</span>
-      <span class="gpu-hint">Use the GPU when possible, fall back to CPU automatically</span>
-    </label>
+    <div class="analysis-settings" id="analysis-settings">
+      <div class="setting-field">
+        <label class="setting-label" for="sample-interval">Sampling interval</label>
+        <select class="setting-select" id="sample-interval">
+          <option value="0">Every frame</option>
+          <option value="1" selected>Every 1 second</option>
+          <option value="2">Every 2 seconds</option>
+        </select>
+        <span class="setting-hint">More samples improve detail but take longer.</span>
+      </div>
+      <div class="setting-field switch-field">
+        <label class="setting-switch" id="subsample-toggle">
+          <input type="checkbox" id="subsample-checkbox" checked>
+          <span class="track"><span class="thumb"></span></span>
+          <span class="switch-text">Subsampling</span>
+        </label>
+        <span class="setting-hint">Samples every other pixel for faster analysis.</span>
+      </div>
+      <div class="setting-field switch-field">
+        <label class="setting-switch" id="gpu-toggle">
+          <input type="checkbox" id="gpu-checkbox">
+          <span class="track"><span class="thumb"></span></span>
+          <span class="switch-text">GPU decoding</span>
+        </label>
+        <span class="setting-hint">Faster when available, but results may differ from CPU analysis.</span>
+      </div>
+    </div>
     <div id="drop-err" class="err"></div>
   </section>
 

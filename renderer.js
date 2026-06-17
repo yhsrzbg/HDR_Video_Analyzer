@@ -24,13 +24,27 @@ const els = {
   savedMsg: document.getElementById('saved-msg'),
   canvas: document.getElementById('chart-canvas'),
   gpuCheckbox: document.getElementById('gpu-checkbox'),
+  subsampleCheckbox: document.getElementById('subsample-checkbox'),
+  sampleInterval: document.getElementById('sample-interval'),
 };
 
-// Restore the GPU toggle from last session (default on).
+// Restore analysis settings.
 const savedGpu = localStorage.getItem('useGpu');
 if (savedGpu !== null) els.gpuCheckbox.checked = savedGpu === '1';
 els.gpuCheckbox.addEventListener('change', () => {
   localStorage.setItem('useGpu', els.gpuCheckbox.checked ? '1' : '0');
+});
+
+const savedSubsample = localStorage.getItem('useSubsample');
+if (savedSubsample !== null) els.subsampleCheckbox.checked = savedSubsample === '1';
+els.subsampleCheckbox.addEventListener('change', () => {
+  localStorage.setItem('useSubsample', els.subsampleCheckbox.checked ? '1' : '0');
+});
+
+const savedSampleInterval = localStorage.getItem('sampleInterval');
+if (['0', '1', '2'].includes(savedSampleInterval)) els.sampleInterval.value = savedSampleInterval;
+els.sampleInterval.addEventListener('change', () => {
+  localStorage.setItem('sampleInterval', els.sampleInterval.value);
 });
 
 const VALID_EXT = ['.mkv', '.mp4', '.mov', '.ts'];
@@ -80,7 +94,11 @@ async function beginAnalysis(videoPath) {
     els.progPeak.textContent = 'Peak: ' + Math.round(peak) + ' nits';
   });
 
-  const res = await api.startAnalysis(videoPath, { useGpu: els.gpuCheckbox.checked });
+  const res = await api.startAnalysis(videoPath, {
+    useGpu: els.gpuCheckbox.checked,
+    useSubsample: els.subsampleCheckbox.checked,
+    sampleInterval: Number(els.sampleInterval.value),
+  });
   api.offProgress();
 
   if (!res.success) {

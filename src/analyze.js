@@ -27,8 +27,8 @@ const Y_COEFF = [0.262700, 0.677998, 0.059302];
 const GAMUT_709 = [[0.64, 0.33], [0.30, 0.60], [0.15, 0.06]];
 const GAMUT_P3 = [[0.68, 0.32], [0.265, 0.69], [0.15, 0.06]];
 
-// Pixels with XYZ sum below this are classified as Rec.709 (low chromaticity confidence)
-const MIN_SUM_THRESHOLD = 0.01;
+// Match the original Python analyzer: only a truly zero XYZ sum lacks chromaticity confidence.
+const MIN_SUM_THRESHOLD = 0;
 
 /**
  * PQ EOTF: convert normalized PQ signal (0-1) to linear light (0-1)
@@ -266,6 +266,44 @@ function getVideoDuration(videoPath, ffprobePath) {
  * Get the video stream's codec name (e.g. "hevc", "h264") using ffprobe.
  * Returns null if it can't be determined.
  */
+function getVideoFrameRate(videoPath, ffprobePath) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=avg_frame_rate,r_frame_rate',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      videoPath,
+    ];
+    const proc = spawn(ffprobePath, args);
+    let output = '';
+    let errOutput = '';
+    proc.stdout.on('data', (d) => { output += d.toString(); });
+    proc.stderr.on('data', (d) => { errOutput += d.toString(); });
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffprobe exited with code ${code}: ${errOutput}`));
+        return;
+      }
+
+      for (const line of output.trim().split(/\r?\n/)) {
+        const rate = parseFrameRate(line);
+        if (rate > 0) {
+          resolve(rate);
+          return;
+        }
+      }
+
+      reject(new Error('Could not parse video frame rate'));
+    });
+    proc.on('error', (err) => reject(err));
+  });
+}
+
+/**
+ * Get the video stream's codec name (e.g. "hevc", "h264") using ffprobe.
+ * Returns null if it can't be determined.
+ */
 function getVideoCodec(videoPath, ffprobePath) {
   return new Promise((resolve) => {
     const args = [
@@ -283,6 +321,23 @@ function getVideoCodec(videoPath, ffprobePath) {
   });
 }
 
+function parseFrameRate(value) {
+  const text = String(value || '').trim();
+  if (!text) return 0;
+  if (text.includes('/')) {
+    const [num, den] = text.split('/').map(Number);
+    return Number.isFinite(num) && Number.isFinite(den) && den !== 0 ? num / den : 0;
+  }
+  const rate = Number(text);
+  return Number.isFinite(rate) ? rate : 0;
+}
+
+function normalizeSampleInterval(value) {
+  const interval = value === undefined || value === null || value === '' ? 1 : Number(value);
+  if (interval === 0 || interval === 1 || interval === 2) return interval;
+  return 1;
+}
+
 /**
  * Build the ordered list of decode strategies to try. Each entry is an array of
  * ffmpeg input-side args prepended before "-i". They are attempted in order;
@@ -291,23 +346,21 @@ function getVideoCodec(videoPath, ffprobePath) {
  *
  * Candidates are platform-aware (speed/availability order):
  *   - macOS: VideoToolbox (Apple Silicon & Intel Mac media engine).
- *   - Windows: vendor-native first — *_cuvid (NVIDIA) → QSV (Intel) — then the
- *     generic D3D11VA path (any GPU) as fallback.
- *   - Linux: vendor *_cuvid (NVIDIA) → VAAPI (AMD/Intel).
+ *   - Windows: vendor-native CUVID first, except VP9, then QSV and D3D11VA.
+ *   - Linux: vendor-native CUVID first, except VP9, then VAAPI.
  */
 function buildDecodeCandidates(useGpu, codec, platform = process.platform) {
   const software = { label: 'software', args: [] };
   if (!useGpu) return [software];
 
   const candidates = [];
-  const cuvid = codec ? `${codec}_cuvid` : null;
+  const cuvid = codec && codec !== 'vp9' ? `${codec}_cuvid` : null;
 
   if (platform === 'darwin') {
     candidates.push({ label: 'videotoolbox', args: ['-hwaccel', 'videotoolbox'] });
   } else if (platform === 'win32') {
-    // Vendor-native decoders first (fastest on their hardware), then the
-    // generic D3D11VA path that works on any GPU.
-    // hevc/h264/vp9/av1/mpeg2/etc. all have *_cuvid variants in ffmpeg-static.
+    // vp9_cuvid can produce pixel values that differ from software decode.
+    // Other codec-specific CUVID decoders are still preferred when available.
     if (cuvid) candidates.push({ label: cuvid, args: ['-c:v', cuvid] });
     candidates.push({ label: 'qsv', args: ['-hwaccel', 'qsv'] });
     candidates.push({ label: 'd3d11va', args: ['-hwaccel', 'd3d11va'] });
@@ -327,13 +380,17 @@ function buildDecodeCandidates(useGpu, codec, platform = process.platform) {
  * the caller can try the next strategy. Abort always rejects with 'CANCELLED'.
  */
 function runDecode(decodeArgs, ctx) {
-  const { ffmpegPath, videoPath, width, height, frameBytes, tStep,
+  const { ffmpegPath, videoPath, width, height, frameBytes, tStep, fpsFilter,
           useSubsample, totalDuration, signal, onProgress } = ctx;
+
+  const filters = [];
+  if (fpsFilter) filters.push(fpsFilter);
+  filters.push(`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`);
 
   const args = [
     ...decodeArgs,
     '-i', videoPath,
-    '-vf', `fps=1,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
+    '-vf', filters.join(','),
     '-pix_fmt', 'gbrp10le',
     '-f', 'rawvideo',
     'pipe:1',
@@ -423,18 +480,18 @@ function runDecode(decodeArgs, ctx) {
  * Run HDR analysis on a video file. Decodes 1 fps via ffmpeg, processes each
  * frame inline, and reports progress through the onProgress callback.
  *
- * When options.useGpu is set, GPU decoders are tried first (vendor cuvid →
- * D3D11VA → QSV) and the analysis transparently falls back to CPU software
- * decode if none work. The per-frame math and output are identical regardless
- * of decode path.
+ * When options.useGpu is set, GPU decoders are tried first and the analysis
+ * falls back to CPU software decode if none work. VP9 skips its CUVID decoder
+ * because it can produce pixel values that differ from software decode.
  *
  * @param {string} videoPath
- * @param {Object} options - { useSubsample, useGpu, ffmpegPath, ffprobePath, signal }
+ * @param {Object} options - { useSubsample, useGpu, sampleInterval, ffmpegPath, ffprobePath, signal }
  * @param {Function} onProgress - (percent, timeSeconds, peakNits) => void
  * @returns {Promise<{results, totalDuration, filename, decoder}>}
  */
 async function analyze(videoPath, options, onProgress) {
   const { useSubsample = true, useGpu = false, signal } = options || {};
+  const sampleInterval = normalizeSampleInterval(options && options.sampleInterval);
 
   if (signal && signal.aborted) {
     throw new Error('CANCELLED');
@@ -451,18 +508,20 @@ async function analyze(videoPath, options, onProgress) {
   }
 
   const totalDuration = await getVideoDuration(videoPath, ffprobePath);
+  const frameRate = sampleInterval === 0 ? await getVideoFrameRate(videoPath, ffprobePath) : null;
 
   const width = 3840;
   const height = 2160;
   const frameBytes = width * height * 3 * 2; // 3 planes, 2 bytes per 10-bit sample
-  const tStep = 1.0;
+  const tStep = sampleInterval === 0 ? (1 / frameRate) : sampleInterval;
+  const fpsFilter = sampleInterval === 0 ? null : `fps=${1 / sampleInterval}`;
 
   const codec = useGpu ? await getVideoCodec(videoPath, ffprobePath) : null;
   const candidates = buildDecodeCandidates(useGpu, codec);
 
   const ctx = {
     ffmpegPath, videoPath, width, height, frameBytes, tStep,
-    useSubsample, totalDuration, signal, onProgress,
+    fpsFilter, useSubsample, totalDuration, signal, onProgress,
   };
 
   let results = null;
