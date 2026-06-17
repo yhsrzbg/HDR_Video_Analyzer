@@ -1,6 +1,8 @@
-# HDR Video Analyzer
+# HDR Lumex
 
-A desktop app for analyzing HDR video files. Drop in a video (or click to choose one) and it decodes frames with FFmpeg, performs PQ EOTF conversion, classifies brightness and color gamut, and renders an interactive 3-panel chart right in the window — no browser, no command line.
+> See HDR clearly.
+
+A desktop HDR video analyzer for brightness, gamut, APL, MaxCLL and MaxFALL. Drop in a video (or click to choose one) and it decodes frames with FFmpeg, performs PQ EOTF conversion, classifies brightness and color gamut, and renders an interactive 3-panel chart right in the window — no browser, no command line.
 
 No installation step. The released builds are portable: download, unzip, and run. FFmpeg is bundled inside.
 
@@ -17,7 +19,7 @@ No installation step. The released builds are portable: download, unzip, and run
 
 Grab the file for your platform from the [Releases](../../releases) page:
 
-- **Windows**: download `HDR-Video-Analyzer-win.exe` and double-click it. It runs directly — no installer.
+- **Windows**: download `HDR-Lumex-win-x64.exe` and double-click it. It runs directly — no installer.
 - **macOS**: download the `.dmg`, open it, drag the app to Applications (or run it from the mounted disk). First launch may be blocked by Gatekeeper — right-click → Open.
 - **Linux**: download the `.AppImage`, mark it executable (`chmod +x`), and run it.
 

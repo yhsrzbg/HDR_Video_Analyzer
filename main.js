@@ -32,7 +32,7 @@ function createWindow() {
     minWidth: 720,
     minHeight: 560,
     backgroundColor: '#1a1a2e',
-    title: 'HDR Video Analyzer',
+    title: 'HDR Lumex',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

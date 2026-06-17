@@ -1,7 +1,7 @@
 {
-  "name": "hdr-video-analyzer",
-  "version": "1.0.4",
-  "description": "Desktop app for HDR video analysis - analyzes brightness, color gamut, and APL, then renders an interactive chart with PNG/HTML export",
+  "name": "hdr-lumex",
+  "version": "2.0.0",
+  "description": "A desktop HDR video analyzer for brightness, gamut, APL, MaxCLL and MaxFALL.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -21,8 +21,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.hdr-analyzer.app",
-    "productName": "HDR Video Analyzer",
+    "appId": "com.hdr-lumex.app",
+    "productName": "HDR Lumex",
     "directories": {
       "output": "dist"
     },
@@ -51,11 +51,12 @@
       ]
     },
     "portable": {
-      "artifactName": "HDR-Video-Analyzer-${os}.${ext}"
+      "artifactName": "HDR-Lumex-${os}-${arch}.${ext}"
     },
     "mac": {
       "target": "dmg",
       "icon": "assets/icon.png",
+      "artifactName": "HDR-Lumex-${os}-${arch}.${ext}",
       "extraResources": [
         {
           "from": "node_modules/ffmpeg-static/ffmpeg",
@@ -71,6 +72,7 @@
       "target": "AppImage",
       "category": "AudioVideo",
       "icon": "assets/icon.png",
+      "artifactName": "HDR-Lumex-${os}-${arch}.${ext}",
       "extraResources": [
         {
           "from": "node_modules/ffmpeg-static/ffmpeg",
