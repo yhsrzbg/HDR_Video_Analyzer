@@ -71,6 +71,12 @@ npm run build:win  # build for Windows only; also build:mac and build:linux
 3. Per-pixel analysis: PQ EOTF (ST 2084) → linear light → Rec.2020 luminance → CIE xy chromaticity for gamut classification
 4. Results are drawn into a `<canvas>` in the window via the Canvas 2D API (no native canvas dependency). The same renderer produces the exported HTML report.
 
+## Credits
+
+HDR Lumex is forked from [HiBluey/HDR_Video_Analyzer](https://github.com/HiBluey/HDR_Video_Analyzer), which is licensed under the MIT License.
+
+This repository maintains the Electron app packaging, UI, GPU decode controls, and related modifications on top of that original HDR analysis work. The upstream MIT copyright and license notice are preserved in [NOTICE](NOTICE).
+
 ## License
 
-MIT
+This fork is licensed under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE).
