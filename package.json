@@ -1,6 +1,6 @@
 {
   "name": "hdr-video-analyzer",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Desktop app for HDR video analysis - analyzes brightness, color gamut, and APL, then renders an interactive chart with PNG/HTML export",
   "main": "main.js",
   "scripts": {

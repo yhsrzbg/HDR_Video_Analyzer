@@ -3,3 +3,9 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
+
+# Local test media
+*.mp4
+*.mkv
+*.mov
+*.ts

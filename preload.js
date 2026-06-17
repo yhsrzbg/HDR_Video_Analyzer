@@ -20,7 +20,7 @@ function pathForFile(file) {
 contextBridge.exposeInMainWorld('hdrAPI', {
   getPathForFile: (file) => pathForFile(file),
   selectVideo: () => ipcRenderer.invoke('select-video'),
-  startAnalysis: (videoPath) => ipcRenderer.invoke('start-analysis', videoPath),
+  startAnalysis: (videoPath, opts) => ipcRenderer.invoke('start-analysis', videoPath, opts),
   cancelAnalysis: () => ipcRenderer.invoke('cancel-analysis'),
   savePng: (dataUrl, defaultName) => ipcRenderer.invoke('save-png', dataUrl, defaultName),
   saveHtml: (analysisData, defaultName) => ipcRenderer.invoke('save-html', analysisData, defaultName),

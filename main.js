@@ -74,7 +74,7 @@ ipcMain.handle('select-video', async () => {
   return result.filePaths[0];
 });
 
-ipcMain.handle('start-analysis', async (event, videoPath) => {
+ipcMain.handle('start-analysis', async (event, videoPath, opts) => {
   if (activeAbort) {
     return { success: false, error: '已有分析正在进行中。' };
   }
@@ -89,13 +89,14 @@ ipcMain.handle('start-analysis', async (event, videoPath) => {
     return { success: false, error: `不支持的格式 "${ext}"。支持: ${VALID_EXT.join(', ')}` };
   }
 
+  const useGpu = !!(opts && opts.useGpu);
   const controller = new AbortController();
   activeAbort = controller;
 
   try {
     const analysisData = await analyze(
       videoPath,
-      { useSubsample: true, signal: controller.signal, ...resolveBinaries() },
+      { useSubsample: true, useGpu, signal: controller.signal, ...resolveBinaries() },
       (percent, time, peak) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('analysis-progress', { percent, time, peak });

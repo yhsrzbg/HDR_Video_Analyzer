@@ -23,7 +23,15 @@ const els = {
   resultTitle: document.getElementById('result-title'),
   savedMsg: document.getElementById('saved-msg'),
   canvas: document.getElementById('chart-canvas'),
+  gpuCheckbox: document.getElementById('gpu-checkbox'),
 };
+
+// Restore the GPU toggle from last session (default on).
+const savedGpu = localStorage.getItem('useGpu');
+if (savedGpu !== null) els.gpuCheckbox.checked = savedGpu === '1';
+els.gpuCheckbox.addEventListener('change', () => {
+  localStorage.setItem('useGpu', els.gpuCheckbox.checked ? '1' : '0');
+});
 
 const VALID_EXT = ['.mkv', '.mp4', '.mov', '.ts'];
 let currentData = null;
@@ -72,7 +80,7 @@ async function beginAnalysis(videoPath) {
     els.progPeak.textContent = 'Peak: ' + Math.round(peak) + ' nits';
   });
 
-  const res = await api.startAnalysis(videoPath);
+  const res = await api.startAnalysis(videoPath, { useGpu: els.gpuCheckbox.checked });
   api.offProgress();
 
   if (!res.success) {
