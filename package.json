@@ -5,6 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "bench": "node bench/analyze-bench.js",
+    "bench:production": "node bench/production-bench.js",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
@@ -35,6 +37,10 @@
       "src/**/*",
       "!**/node_modules/ffmpeg-static/ffmpeg*",
       "!**/node_modules/@derhuerst/ffprobe-static/ffprobe*"
+    ],
+    "asarUnpack": [
+      "src/color-science.js",
+      "src/process-frame-worker.js"
     ],
     "win": {
       "target": "portable",
