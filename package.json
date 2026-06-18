@@ -1,6 +1,6 @@
 {
   "name": "hdr-lumex",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "A desktop HDR video analyzer for brightness, gamut, APL, MaxCLL and MaxFALL.",
   "main": "main.js",
   "scripts": {
