@@ -1,471 +1,604 @@
 'use strict';
 
 (function() {
-  // PQ constants (copied from hdr-analyzer.js since require() is unavailable in renderer)
   const m1 = 2610 / 16384;
   const m2 = (2523 / 4096) * 128;
   const c1 = 3424 / 4096;
   const c2 = (2413 / 4096) * 32;
   const c3 = (2392 / 4096) * 32;
 
-  /**
-   * PQ Inverse: convert nits to PQ signal value (for chart axis)
-   * @param {number} nits - Luminance in nits
-   * @returns {number} PQ signal value (0-1)
-   */
-  const pqInverse = (nits) => {
-    const y = Math.max(Math.min(nits / 10000.0, 1.0), 1e-10);
-    const v = Math.pow(y, m1);
-    return Math.pow((c1 + c2 * v) / (1 + c3 * v), m2);
-  };
-
-  // Chart dimensions and layout
-  const CHART_WIDTH = 1400;
-  const CHART_HEIGHT = 1300;
-  const MARGIN = { top: 60, right: 60, bottom: 50, left: 80 };
-  const PANEL_GAP = 60;
-
-  // Colors
   const COLORS = {
-    background: '#FFFFFF',
-    grid: 'rgba(0, 0, 0, 0.1)',
-    peakLine: '#FF8C00',
-    avgLine: '#1E90FF',
-    rec709: '#BBBBBB',
+    peak: '#FF8C00',
+    avg: '#1E90FF',
+    rec709: '#AEB6C2',
     p3: '#F4D03F',
     rec2020: '#E74C3C',
-    histogram: '#32CD32',
-    text: '#333333',
-    statsBox: 'rgba(255, 255, 255, 0.9)',
-    statsBoxBorder: '#CCCCCC'
+    histogram: '#32CD78',
+    text: '#263247',
+    muted: '#6B7890',
+    grid: '#DCE2EA',
+    panel: '#FFFFFF',
   };
 
-  /**
-   * Draw a rounded rectangle path
-   */
-  const roundRect = (ctx, x, y, w, h, r) => {
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-  };
+  function pqInverse(nits) {
+    if (!Number.isFinite(nits) || nits <= 0) return 0;
+    const y = Math.min(nits / 10000, 1);
+    const v = Math.pow(y, m1);
+    return Math.pow((c1 + c2 * v) / (1 + c3 * v), m2);
+  }
 
-  /**
-   * Draw a stats text box
-   */
-  const drawStatsBox = (ctx, anchorX, anchorY, lines, hAlign, vAlign) => {
-    ctx.font = '11px Arial, sans-serif';
-    const lineHeight = 16;
-    const padding = 8;
-    let maxWidth = 0;
-    for (const line of lines) {
-      const w = ctx.measureText(line).width;
-      if (w > maxWidth) maxWidth = w;
+  function pqToNits(signal) {
+    if (!Number.isFinite(signal) || signal <= 0) return 0;
+    const p = Math.pow(Math.min(signal, 1), 1 / m2);
+    const numerator = Math.max(p - c1, 0);
+    const denominator = c2 - c3 * p;
+    if (denominator <= 0) return 10000;
+    return 10000 * Math.pow(numerator / denominator, 1 / m1);
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function finite(value, fallback) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  function formatTime(seconds) {
+    const safe = Math.max(0, finite(seconds, 0));
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    const secs = Math.floor(safe % 60);
+    const millis = Math.round((safe - Math.floor(safe)) * 1000);
+    const prefix = hours > 0 ? String(hours).padStart(2, '0') + ':' : '';
+    return prefix +
+      String(minutes).padStart(2, '0') + ':' +
+      String(secs).padStart(2, '0') + '.' +
+      String(millis).padStart(3, '0');
+  }
+
+  function formatAxisTime(seconds) {
+    const safe = Math.max(0, finite(seconds, 0));
+    if (safe >= 3600) {
+      const hours = Math.floor(safe / 3600);
+      const minutes = Math.floor((safe % 3600) / 60);
+      return hours + ':' + String(minutes).padStart(2, '0') + 'h';
     }
-    const boxWidth = maxWidth + padding * 2;
-    const boxHeight = lines.length * lineHeight + padding * 2;
-
-    const bx = hAlign === 'right' ? anchorX - boxWidth : anchorX;
-    const by = vAlign === 'bottom' ? anchorY - boxHeight : anchorY;
-
-    // Box background
-    ctx.fillStyle = COLORS.statsBox;
-    ctx.strokeStyle = COLORS.statsBoxBorder;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    roundRect(ctx, bx, by, boxWidth, boxHeight, 4);
-    ctx.fill();
-    ctx.stroke();
-
-    // Text
-    ctx.fillStyle = COLORS.text;
-    ctx.textAlign = 'left';
-    for (let i = 0; i < lines.length; i++) {
-      ctx.fillText(lines[i], bx + padding, by + padding + (i + 1) * lineHeight - 4);
+    if (safe >= 60) {
+      const minutes = Math.floor(safe / 60);
+      const secs = Math.floor(safe % 60);
+      return minutes + ':' + String(secs).padStart(2, '0');
     }
-  };
+    return safe < 10 ? safe.toFixed(1) + 's' : Math.round(safe) + 's';
+  }
 
-  /**
-   * Draw Panel 1: Brightness over time with PQ-space Y-axis
-   */
-  const drawBrightnessPanel = (ctx, x, y, width, height, times, peaks, avgs, maxTime) => {
-    const yTicks = [0, 0.1, 1, 10, 50, 100, 203, 500, 1000, 4000, 10000];
+  function formatNits(value) {
+    if (value < 1) return value.toFixed(2);
+    if (value < 10) return value.toFixed(1);
+    return Math.round(value).toLocaleString();
+  }
 
-    // Draw panel border and grid
-    ctx.strokeStyle = COLORS.grid;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, width, height);
+  function normalizeData(analysisData) {
+    const source = analysisData && Array.isArray(analysisData.results)
+      ? analysisData.results
+      : [];
+    return source.map((item, index) => ({
+      index,
+      time: Math.max(0, finite(item && item.time, index)),
+      peak: Math.max(0, finite(item && item.peak, 0)),
+      avg: Math.max(0, finite(item && item.avg, 0)),
+      r709: Math.max(0, finite(item && item.r709, 0)),
+      rp3: Math.max(0, finite(item && item.rp3, 0)),
+      r2020: Math.max(0, finite(item && item.r2020, 0)),
+    })).sort((a, b) => a.time - b.time);
+  }
 
-    // Y-axis grid lines and labels
-    ctx.font = '10px Arial, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = COLORS.text;
+  function nearestPoint(points, time) {
+    if (!points.length) return null;
+    let low = 0;
+    let high = points.length - 1;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (points[middle].time < time) low = middle + 1;
+      else high = middle;
+    }
+    if (low === 0) return points[0];
+    const before = points[low - 1];
+    const after = points[low];
+    return Math.abs(before.time - time) <= Math.abs(after.time - time) ? before : after;
+  }
 
-    for (const tick of yTicks) {
-      const pqVal = pqInverse(tick);
-      const py = y + height - (pqVal * height);
-      if (py >= y && py <= y + height) {
-        ctx.beginPath();
-        ctx.strokeStyle = COLORS.grid;
-        ctx.moveTo(x, py);
-        ctx.lineTo(x + width, py);
-        ctx.stroke();
-        ctx.fillText(tick.toString(), x - 5, py + 4);
+  function buildHistogram(points) {
+    const bins = new Array(100).fill(0);
+    for (const point of points) {
+      const apl = Math.max(0, Math.min(100, pqInverse(point.avg) * 100));
+      bins[Math.min(99, Math.floor(apl))]++;
+    }
+    const total = points.length || 1;
+    return bins.map((count, index) => [index + 0.5, count, count / total]);
+  }
+
+  function calculateStats(points) {
+    if (!points.length) {
+      return {
+        maxCLL: 0,
+        aveCLL: 0,
+        maxFALL: 0,
+        aveFALL: 0,
+        meanAPL: 0,
+        medianAPL: 0,
+      };
+    }
+    const peaks = points.map(point => point.peak);
+    const avgs = points.map(point => point.avg);
+    const apl = avgs.map(value => pqInverse(value) * 100).sort((a, b) => a - b);
+    const middle = Math.floor(apl.length / 2);
+    const medianAPL = apl.length % 2
+      ? apl[middle]
+      : (apl[middle - 1] + apl[middle]) / 2;
+    return {
+      maxCLL: peaks.reduce((max, value) => Math.max(max, value), 0),
+      aveCLL: peaks.reduce((sum, value) => sum + value, 0) / peaks.length,
+      maxFALL: avgs.reduce((max, value) => Math.max(max, value), 0),
+      aveFALL: avgs.reduce((sum, value) => sum + value, 0) / avgs.length,
+      meanAPL: apl.reduce((sum, value) => sum + value, 0) / apl.length,
+      medianAPL,
+    };
+  }
+
+  function tooltipRow(color, label, value) {
+    return '<div class="hdr-tooltip-row">' +
+      '<span><i style="background:' + color + '"></i>' + escapeHtml(label) + '</span>' +
+      '<strong>' + escapeHtml(value) + '</strong>' +
+      '</div>';
+  }
+
+  function buildTooltipFormatter(points) {
+    return function(params) {
+      const list = Array.isArray(params) ? params : [params];
+      const first = list[0];
+      if (!first) return '';
+
+      if (first.seriesName === 'APL distribution') {
+        const bin = first.data || [0, 0, 0];
+        const start = Math.max(0, Math.floor(finite(bin[0], 0) - 0.5));
+        return '<div class="hdr-tooltip">' +
+          '<div class="hdr-tooltip-title">APL ' + start + '%–' + (start + 1) + '%</div>' +
+          tooltipRow(COLORS.histogram, 'Samples', String(finite(bin[1], 0))) +
+          tooltipRow(COLORS.histogram, 'Share', (finite(bin[2], 0) * 100).toFixed(2) + '%') +
+          '</div>';
       }
-    }
 
-    // Y-axis label
-    ctx.save();
-    ctx.translate(x - 55, y + height / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.font = '12px Arial, sans-serif';
-    ctx.fillText('Brightness (Nits)', 0, 0);
-    ctx.restore();
+      const data = first.data;
+      const time = Array.isArray(data) ? finite(data[0], 0) : finite(first.axisValue, 0);
+      const point = nearestPoint(points, time);
+      if (!point) return '';
+      return '<div class="hdr-tooltip">' +
+        '<div class="hdr-tooltip-title">' + formatTime(point.time) +
+          ' <span>Sample #' + (point.index + 1) + '</span></div>' +
+        tooltipRow(COLORS.peak, 'Peak', formatNits(point.peak) + ' nits') +
+        tooltipRow(COLORS.avg, 'Average', formatNits(point.avg) + ' nits') +
+        tooltipRow(COLORS.rec709, 'Rec.709', (point.r709 * 100).toFixed(2) + '%') +
+        tooltipRow(COLORS.p3, 'P3 outside 709', (point.rp3 * 100).toFixed(2) + '%') +
+        tooltipRow(COLORS.rec2020, 'Rec.2020 outside P3', (point.r2020 * 100).toFixed(2) + '%') +
+        '</div>';
+    };
+  }
 
-    // Plot peak line
-    ctx.beginPath();
-    ctx.strokeStyle = COLORS.peakLine;
-    ctx.lineWidth = 1;
-    for (let i = 0; i < times.length; i++) {
-      const px = x + (times[i] / maxTime) * width;
-      const pqV = pqInverse(peaks[i]);
-      const ppy = y + height - (pqV * height);
-      if (i === 0) ctx.moveTo(px, ppy);
-      else ctx.lineTo(px, ppy);
-    }
-    ctx.stroke();
+  function lineSeries(name, color, data, xAxisIndex, yAxisIndex, extra) {
+    return Object.assign({
+      name,
+      type: 'line',
+      xAxisIndex,
+      yAxisIndex,
+      data,
+      showSymbol: data.length <= 1,
+      symbol: 'circle',
+      symbolSize: 7,
+      sampling: 'lttb',
+      animation: false,
+      connectNulls: true,
+      lineStyle: { color, width: 1.5 },
+      itemStyle: { color },
+      emphasis: { focus: 'series' },
+    }, extra || {});
+  }
 
-    // Plot avg line
-    ctx.beginPath();
-    ctx.strokeStyle = COLORS.avgLine;
-    ctx.lineWidth = 1;
-    for (let i = 0; i < times.length; i++) {
-      const px = x + (times[i] / maxTime) * width;
-      const pqV = pqInverse(avgs[i]);
-      const ppy = y + height - (pqV * height);
-      if (i === 0) ctx.moveTo(px, ppy);
-      else ctx.lineTo(px, ppy);
-    }
-    ctx.stroke();
+  function buildOption(analysisData, points, exporting) {
+    const histogram = buildHistogram(points);
+    const stats = calculateStats(points);
+    const times = points.map(point => point.time);
+    const maxTime = times.reduce(
+      (max, value) => Math.max(max, value),
+      Math.max(finite(analysisData && analysisData.totalDuration, 0), 1)
+    );
+    const fileName = analysisData && analysisData.filename ? analysisData.filename : 'HDR analysis';
+    const bottom = exporting ? 78 : 92;
 
-    // Legend
-    const legendX = x + width - 150;
-    const legendY = y + 15;
-    ctx.font = '11px Arial, sans-serif';
-    ctx.textAlign = 'left';
+    return {
+      animation: false,
+      backgroundColor: COLORS.panel,
+      textStyle: {
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif",
+        color: COLORS.text,
+      },
+      title: [
+        {
+          text: 'HDR Analysis: ' + fileName,
+          left: 'center',
+          top: 10,
+          textStyle: { fontSize: 16, fontWeight: 700, color: COLORS.text },
+        },
+        {
+          text: 'Brightness over time',
+          left: 72,
+          top: 54,
+          textStyle: { fontSize: 13, fontWeight: 600, color: COLORS.text },
+        },
+        {
+          text: 'Color gamut over time',
+          left: 72,
+          top: '39%',
+          textStyle: { fontSize: 13, fontWeight: 600, color: COLORS.text },
+        },
+        {
+          text: 'APL distribution',
+          left: 72,
+          top: '69%',
+          textStyle: { fontSize: 13, fontWeight: 600, color: COLORS.text },
+        },
+      ],
+      tooltip: {
+        trigger: 'axis',
+        triggerOn: 'mousemove|click',
+        confine: true,
+        enterable: false,
+        backgroundColor: 'rgba(18, 27, 52, 0.96)',
+        borderColor: '#32466F',
+        borderWidth: 1,
+        padding: 0,
+        textStyle: { color: '#EEF3FF', fontSize: 12 },
+        axisPointer: {
+          type: 'cross',
+          snap: true,
+          lineStyle: { color: '#667A9E', type: 'dashed' },
+          crossStyle: { color: '#667A9E', type: 'dashed' },
+          label: {
+            backgroundColor: '#334568',
+            formatter: function(params) {
+              return params.axisDimension === 'x'
+                ? formatTime(params.value)
+                : String(params.value);
+            },
+          },
+        },
+        formatter: buildTooltipFormatter(points),
+      },
+      axisPointer: {
+        link: [{ xAxisIndex: [0, 1] }],
+      },
+      legend: [
+        {
+          top: 52,
+          right: 55,
+          data: ['Peak', 'Average'],
+          textStyle: { color: COLORS.muted },
+        },
+        {
+          top: '39%',
+          right: 55,
+          data: ['Rec.709', 'P3 outside 709', 'Rec.2020 outside P3'],
+          textStyle: { color: COLORS.muted },
+        },
+      ],
+      grid: [
+        { left: 72, right: 72, top: 88, height: '24%', containLabel: true },
+        { left: 72, right: 72, top: '43%', height: '20%', containLabel: true },
+        { left: 72, right: 72, top: '73%', bottom, containLabel: true },
+      ],
+      xAxis: [
+        {
+          id: 'brightness-time',
+          type: 'value',
+          gridIndex: 0,
+          min: 0,
+          max: maxTime,
+          axisLabel: { formatter: formatAxisTime, color: COLORS.muted },
+          axisLine: { lineStyle: { color: '#AEB8C8' } },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: COLORS.grid } },
+        },
+        {
+          id: 'gamut-time',
+          type: 'value',
+          gridIndex: 1,
+          min: 0,
+          max: maxTime,
+          name: 'Time',
+          nameLocation: 'middle',
+          nameGap: 28,
+          axisLabel: { formatter: formatAxisTime, color: COLORS.muted },
+          axisLine: { lineStyle: { color: '#AEB8C8' } },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: COLORS.grid } },
+        },
+        {
+          id: 'apl',
+          type: 'value',
+          gridIndex: 2,
+          min: 0,
+          max: 100,
+          name: 'APL (%)',
+          nameLocation: 'middle',
+          nameGap: 28,
+          axisLabel: { color: COLORS.muted },
+          axisLine: { lineStyle: { color: '#AEB8C8' } },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: COLORS.grid } },
+        },
+      ],
+      yAxis: [
+        {
+          id: 'brightness',
+          type: 'value',
+          gridIndex: 0,
+          min: 0,
+          max: 1,
+          name: 'Brightness (nits, PQ scale)',
+          nameLocation: 'middle',
+          nameGap: 54,
+          axisLabel: {
+            color: COLORS.muted,
+            formatter: value => formatNits(pqToNits(value)),
+          },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: COLORS.grid } },
+        },
+        {
+          id: 'gamut',
+          type: 'value',
+          gridIndex: 1,
+          min: 0,
+          max: 100,
+          interval: 20,
+          name: 'Gamut ratio',
+          nameLocation: 'middle',
+          nameGap: 46,
+          axisLabel: { formatter: value => value + '%', color: COLORS.muted },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: COLORS.grid } },
+        },
+        {
+          id: 'frames',
+          type: 'value',
+          gridIndex: 2,
+          minInterval: 1,
+          name: 'Sample count',
+          nameLocation: 'middle',
+          nameGap: 46,
+          axisLabel: { color: COLORS.muted },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: COLORS.grid } },
+        },
+      ],
+      dataZoom: exporting ? [] : [
+        {
+          id: 'time-slider',
+          type: 'slider',
+          xAxisIndex: [0, 1],
+          bottom: 42,
+          left: 92,
+          right: 92,
+          height: 20,
+          filterMode: 'none',
+          showDetail: true,
+          labelFormatter: value => formatTime(value),
+          brushSelect: false,
+        },
+        {
+          id: 'time-inside',
+          type: 'inside',
+          xAxisIndex: [0, 1],
+          filterMode: 'none',
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          moveOnMouseWheel: false,
+        },
+        {
+          id: 'brightness-slider',
+          type: 'slider',
+          yAxisIndex: 0,
+          orient: 'vertical',
+          right: 15,
+          top: 88,
+          height: '24%',
+          width: 18,
+          filterMode: 'none',
+          showDetail: true,
+          labelFormatter: value => formatNits(pqToNits(value)),
+          brushSelect: false,
+        },
+        {
+          id: 'apl-inside',
+          type: 'inside',
+          xAxisIndex: 2,
+          filterMode: 'none',
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          moveOnMouseWheel: false,
+        },
+      ],
+      graphic: [
+        {
+          type: 'text',
+          right: 84,
+          top: 83,
+          silent: true,
+          style: {
+            text: [
+              'MaxCLL  ' + Math.round(stats.maxCLL) + ' nits',
+              'AveCLL  ' + Math.round(stats.aveCLL) + ' nits',
+              'MaxFALL ' + Math.round(stats.maxFALL) + ' nits',
+              'AveFALL ' + Math.round(stats.aveFALL) + ' nits',
+            ].join('\n'),
+            font: '11px Arial',
+            lineHeight: 17,
+            fill: COLORS.text,
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            borderColor: '#D6DCE5',
+            borderWidth: 1,
+            borderRadius: 4,
+            padding: [7, 9],
+          },
+        },
+        {
+          type: 'text',
+          right: 84,
+          top: '73%',
+          silent: true,
+          style: {
+            text: 'Average APL  ' + stats.meanAPL.toFixed(2) + '%\n' +
+              'Median APL   ' + stats.medianAPL.toFixed(2) + '%',
+            font: '11px Arial',
+            lineHeight: 17,
+            fill: COLORS.text,
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            borderColor: '#D6DCE5',
+            borderWidth: 1,
+            borderRadius: 4,
+            padding: [7, 9],
+          },
+        },
+      ],
+      series: [
+        lineSeries(
+          'Peak',
+          COLORS.peak,
+          points.map(point => [point.time, pqInverse(point.peak), point.peak]),
+          0,
+          0
+        ),
+        lineSeries(
+          'Average',
+          COLORS.avg,
+          points.map(point => [point.time, pqInverse(point.avg), point.avg]),
+          0,
+          0
+        ),
+        lineSeries(
+          'Rec.709',
+          COLORS.rec709,
+          points.map(point => [point.time, point.r709 * 100]),
+          1,
+          1,
+          {
+            stack: 'gamut',
+            lineStyle: { width: 0 },
+            areaStyle: { color: COLORS.rec709, opacity: 0.9 },
+          }
+        ),
+        lineSeries(
+          'P3 outside 709',
+          COLORS.p3,
+          points.map(point => [point.time, point.rp3 * 100]),
+          1,
+          1,
+          {
+            stack: 'gamut',
+            lineStyle: { width: 0 },
+            areaStyle: { color: COLORS.p3, opacity: 0.9 },
+          }
+        ),
+        lineSeries(
+          'Rec.2020 outside P3',
+          COLORS.rec2020,
+          points.map(point => [point.time, point.r2020 * 100]),
+          1,
+          1,
+          {
+            stack: 'gamut',
+            lineStyle: { width: 0 },
+            areaStyle: { color: COLORS.rec2020, opacity: 0.9 },
+          }
+        ),
+        {
+          name: 'APL distribution',
+          type: 'bar',
+          xAxisIndex: 2,
+          yAxisIndex: 2,
+          data: histogram,
+          encode: { x: 0, y: 1 },
+          animation: false,
+          barWidth: '95%',
+          itemStyle: {
+            color: COLORS.histogram,
+            opacity: 0.78,
+            borderColor: '#FFFFFF',
+            borderWidth: 0.5,
+          },
+          emphasis: { itemStyle: { opacity: 1 } },
+        },
+      ],
+    };
+  }
 
-    ctx.strokeStyle = COLORS.peakLine;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(legendX, legendY);
-    ctx.lineTo(legendX + 20, legendY);
-    ctx.stroke();
-    ctx.fillStyle = COLORS.text;
-    ctx.fillText('Peak (Nits)', legendX + 25, legendY + 4);
+  function createExportDataUrl(analysisData, points) {
+    const host = document.createElement('div');
+    host.style.cssText =
+      'position:fixed;left:-10000px;top:0;width:1400px;height:1300px;background:#fff;';
+    document.body.appendChild(host);
+    const exportChart = window.echarts.init(host, null, {
+      renderer: 'canvas',
+      width: 1400,
+      height: 1300,
+      devicePixelRatio: 1,
+    });
+    exportChart.setOption(buildOption(analysisData, points, true));
+    const dataUrl = exportChart.getDataURL({
+      type: 'png',
+      pixelRatio: 1,
+      backgroundColor: '#FFFFFF',
+      excludeComponents: ['toolbox'],
+    });
+    exportChart.dispose();
+    host.remove();
+    return dataUrl;
+  }
 
-    ctx.strokeStyle = COLORS.avgLine;
-    ctx.beginPath();
-    ctx.moveTo(legendX, legendY + 18);
-    ctx.lineTo(legendX + 20, legendY + 18);
-    ctx.stroke();
-    ctx.fillText('Avg (Nits)', legendX + 25, legendY + 22);
+  function createHdrChart(container, analysisData) {
+    if (!window.echarts) throw new Error('ECharts is not loaded.');
+    const existing = window.echarts.getInstanceByDom(container);
+    if (existing) existing.dispose();
 
-    // Stats box (bottom right)
-    const maxCLL = Math.max(...peaks);
-    const aveCLL = peaks.reduce((a, b) => a + b, 0) / peaks.length;
-    const maxFALL = Math.max(...avgs);
-    const aveFALL = avgs.reduce((a, b) => a + b, 0) / avgs.length;
+    const points = normalizeData(analysisData);
+    const chart = window.echarts.init(container, null, { renderer: 'canvas' });
+    chart.setOption(buildOption(analysisData, points, false));
 
-    const statsLines = [
-      'MaxCLL: ' + Math.round(maxCLL) + ' nits',
-      'AveCLL: ' + Math.round(aveCLL) + ' nits',
-      'MaxFALL: ' + Math.round(maxFALL) + ' nits',
-      'AveFALL: ' + Math.round(aveFALL) + ' nits'
-    ];
+    return {
+      resize: () => chart.resize(),
+      dispose: () => chart.dispose(),
+      reset: () => chart.dispatchAction({ type: 'restore' }),
+      showAll: () => chart.dispatchAction({ type: 'legendAllSelect' }),
+      setMode: mode => {
+        chart.dispatchAction({
+          type: 'takeGlobalCursor',
+          key: 'dataZoomSelect',
+          dataZoomSelectActive: mode === 'zoom',
+        });
+      },
+      getPngDataUrl: () => createExportDataUrl(analysisData, points),
+      getChart: () => chart,
+    };
+  }
 
-    drawStatsBox(ctx, x + width - 10, y + height - 10, statsLines, 'right', 'bottom');
-  };
-
-  /**
-   * Draw Panel 2: Color gamut ratio stacked area chart
-   */
-  const drawGamutPanel = (ctx, x, y, width, height, times, r709s, rp3s, r2020s, maxTime) => {
-    // Draw panel border
-    ctx.strokeStyle = COLORS.grid;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, width, height);
-
-    // Y-axis grid and labels
-    ctx.font = '10px Arial, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = COLORS.text;
-    for (let tick = 0; tick <= 1; tick += 0.2) {
-      const py = y + height - (tick * height);
-      ctx.beginPath();
-      ctx.strokeStyle = COLORS.grid;
-      ctx.moveTo(x, py);
-      ctx.lineTo(x + width, py);
-      ctx.stroke();
-      ctx.fillText(tick.toFixed(1), x - 5, py + 4);
-    }
-
-    // Y-axis label
-    ctx.save();
-    ctx.translate(x - 55, y + height / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.font = '12px Arial, sans-serif';
-    ctx.fillText('Gamut Ratio', 0, 0);
-    ctx.restore();
-
-    // X-axis label
-    ctx.font = '12px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = COLORS.text;
-    ctx.fillText('Time (s)', x + width / 2, y + height + 18);
-
-    // Draw stacked areas (bottom to top: 709, P3, 2020)
-    const numPoints = times.length;
-    if (numPoints < 2) return;
-
-    // Rec.2020 layer (top) - from (709+p3) to (709+p3+2020)
-    ctx.beginPath();
-    ctx.moveTo(x, y + height);
-    for (let i = 0; i < numPoints; i++) {
-      const px = x + (times[i] / maxTime) * width;
-      const stackVal = r709s[i] + rp3s[i] + r2020s[i];
-      const py = y + height - (stackVal * height);
-      ctx.lineTo(px, py);
-    }
-    for (let i = numPoints - 1; i >= 0; i--) {
-      const px = x + (times[i] / maxTime) * width;
-      const stackVal = r709s[i] + rp3s[i];
-      const py = y + height - (stackVal * height);
-      ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.fillStyle = COLORS.rec2020;
-    ctx.fill();
-
-    // P3 layer (middle) - from 709 to (709+p3)
-    ctx.beginPath();
-    ctx.moveTo(x, y + height);
-    for (let i = 0; i < numPoints; i++) {
-      const px = x + (times[i] / maxTime) * width;
-      const stackVal = r709s[i] + rp3s[i];
-      const py = y + height - (stackVal * height);
-      ctx.lineTo(px, py);
-    }
-    for (let i = numPoints - 1; i >= 0; i--) {
-      const px = x + (times[i] / maxTime) * width;
-      const py = y + height - (r709s[i] * height);
-      ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.fillStyle = COLORS.p3;
-    ctx.fill();
-
-    // Rec.709 layer (bottom)
-    ctx.beginPath();
-    ctx.moveTo(x, y + height);
-    for (let i = 0; i < numPoints; i++) {
-      const px = x + (times[i] / maxTime) * width;
-      const py = y + height - (r709s[i] * height);
-      ctx.lineTo(px, py);
-    }
-    ctx.lineTo(x + (times[numPoints - 1] / maxTime) * width, y + height);
-    ctx.closePath();
-    ctx.fillStyle = COLORS.rec709;
-    ctx.fill();
-
-    // Legend
-    const legendX = x + 10;
-    const legendY = y + height - 10;
-    ctx.font = '11px Arial, sans-serif';
-    ctx.textAlign = 'left';
-
-    // Rec.709
-    ctx.fillStyle = COLORS.rec709;
-    ctx.fillRect(legendX, legendY - 36, 12, 12);
-    ctx.fillStyle = COLORS.text;
-    ctx.fillText('Rec.709', legendX + 16, legendY - 26);
-
-    // P3
-    ctx.fillStyle = COLORS.p3;
-    ctx.fillRect(legendX, legendY - 22, 12, 12);
-    ctx.fillStyle = COLORS.text;
-    ctx.fillText('P3 (outside 709)', legendX + 16, legendY - 12);
-
-    // Rec.2020
-    ctx.fillStyle = COLORS.rec2020;
-    ctx.fillRect(legendX, legendY - 8, 12, 12);
-    ctx.fillStyle = COLORS.text;
-    ctx.fillText('Rec.2020 (outside P3)', legendX + 16, legendY + 2);
-  };
-
-  /**
-   * Draw Panel 3: APL histogram
-   */
-  const drawAPLHistogramPanel = (ctx, x, y, width, height, avgs) => {
-    // Calculate APL values: pqInverse(avg_nits) * 100
-    const aplData = avgs.map(avg => pqInverse(avg) * 100.0);
-
-    // Build histogram (100 bins, range 0-100)
-    const numBins = 100;
-    const bins = new Array(numBins).fill(0);
-    for (const apl of aplData) {
-      const binIdx = Math.min(Math.floor(apl), numBins - 1);
-      if (binIdx >= 0) {
-        bins[binIdx]++;
-      }
-    }
-    const maxBinCount = Math.max(...bins, 1);
-
-    // Draw panel border
-    ctx.strokeStyle = COLORS.grid;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, width, height);
-
-    // Y-axis grid and labels
-    ctx.font = '10px Arial, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = COLORS.text;
-    const yTickCount = 5;
-    for (let i = 0; i <= yTickCount; i++) {
-      const val = (maxBinCount / yTickCount) * i;
-      const py = y + height - (i / yTickCount) * height;
-      ctx.beginPath();
-      ctx.strokeStyle = COLORS.grid;
-      ctx.moveTo(x, py);
-      ctx.lineTo(x + width, py);
-      ctx.stroke();
-      ctx.fillText(Math.round(val).toString(), x - 5, py + 4);
-    }
-
-    // Y-axis label
-    ctx.save();
-    ctx.translate(x - 55, y + height / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.font = '12px Arial, sans-serif';
-    ctx.fillText('Frame Count', 0, 0);
-    ctx.restore();
-
-    // X-axis label
-    ctx.font = '12px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = COLORS.text;
-    ctx.fillText('APL (%)', x + width / 2, y + height + 18);
-
-    // X-axis tick labels
-    ctx.font = '10px Arial, sans-serif';
-    for (let tick = 0; tick <= 100; tick += 20) {
-      const px = x + (tick / 100) * width;
-      ctx.fillText(tick.toString(), px, y + height + 14);
-    }
-
-    // Draw histogram bars
-    const barWidth = width / numBins;
-    ctx.fillStyle = COLORS.histogram;
-    ctx.globalAlpha = 0.7;
-    for (let i = 0; i < numBins; i++) {
-      if (bins[i] > 0) {
-        const barHeight = (bins[i] / maxBinCount) * height;
-        const bx = x + i * barWidth;
-        const by = y + height - barHeight;
-        ctx.fillRect(bx, by, barWidth - 0.5, barHeight);
-      }
-    }
-    ctx.globalAlpha = 1.0;
-
-    // Bar borders
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i < numBins; i++) {
-      if (bins[i] > 0) {
-        const barHeight = (bins[i] / maxBinCount) * height;
-        const bx = x + i * barWidth;
-        const by = y + height - barHeight;
-        ctx.strokeRect(bx, by, barWidth - 0.5, barHeight);
-      }
-    }
-
-    // Stats box (bottom right)
-    const meanAPL = aplData.reduce((a, b) => a + b, 0) / aplData.length;
-    const sortedAPL = aplData.slice().sort((a, b) => a - b);
-    let medianAPL;
-    if (sortedAPL.length % 2 === 0) {
-      medianAPL = (sortedAPL[sortedAPL.length / 2 - 1] + sortedAPL[sortedAPL.length / 2]) / 2;
-    } else {
-      medianAPL = sortedAPL[Math.floor(sortedAPL.length / 2)];
-    }
-
-    const statsLines = [
-      'Average APL: ' + meanAPL.toFixed(2) + '%',
-      'Median APL: ' + medianAPL.toFixed(2) + '%'
-    ];
-
-    drawStatsBox(ctx, x + width - 10, y + height - 10, statsLines, 'right', 'bottom');
-  };
-
-  /**
-   * Draw a 3-panel HDR analysis chart onto a canvas element.
-   * @param {HTMLCanvasElement} canvas - The canvas element to draw on
-   * @param {Object} analysisData - { results, totalDuration, filename }
-   */
-  const drawChart = (canvas, analysisData) => {
-    const { results, filename } = analysisData;
-
-    canvas.width = CHART_WIDTH;
-    canvas.height = CHART_HEIGHT;
-
-    const ctx = canvas.getContext('2d');
-
-    // Background
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, CHART_WIDTH, CHART_HEIGHT);
-
-    // Title
-    ctx.fillStyle = COLORS.text;
-    ctx.font = 'bold 14px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('HDR Analysis: ' + filename, CHART_WIDTH / 2, 30);
-
-    // Calculate panel dimensions
-    const plotWidth = CHART_WIDTH - MARGIN.left - MARGIN.right;
-    const totalPlotHeight = CHART_HEIGHT - MARGIN.top - MARGIN.bottom - PANEL_GAP * 2;
-    const panelHeight = totalPlotHeight / 3;
-
-    // Extract data arrays
-    const times = results.map(r => r.time);
-    const peaks = results.map(r => r.peak);
-    const avgs = results.map(r => r.avg);
-    const r709s = results.map(r => r.r709);
-    const rp3s = results.map(r => r.rp3);
-    const r2020s = results.map(r => r.r2020);
-
-    const maxTime = Math.max(...times);
-
-    // Panel 1: Brightness over time (PQ space)
-    const panel1Y = MARGIN.top;
-    drawBrightnessPanel(ctx, MARGIN.left, panel1Y, plotWidth, panelHeight, times, peaks, avgs, maxTime);
-
-    // Panel 2: Gamut ratio stacked area
-    const panel2Y = panel1Y + panelHeight + PANEL_GAP;
-    drawGamutPanel(ctx, MARGIN.left, panel2Y, plotWidth, panelHeight, times, r709s, rp3s, r2020s, maxTime);
-
-    // Panel 3: APL histogram
-    const panel3Y = panel2Y + panelHeight + PANEL_GAP;
-    drawAPLHistogramPanel(ctx, MARGIN.left, panel3Y, plotWidth, panelHeight, avgs);
-  };
-
-  // Expose only drawChart on the window object
-  window.drawChart = drawChart;
+  window.createHdrChart = createHdrChart;
 })();

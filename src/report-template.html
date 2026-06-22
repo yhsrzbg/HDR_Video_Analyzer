@@ -6,69 +6,127 @@
   <title>HDR Lumex Report</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { min-height: 100%; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-      background: #1a1a2e;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
+      background: #1a1a2e; color: #e0e0e0;
+    }
+    .page { min-height: 100vh; display: flex; flex-direction: column; }
+    .toolbar, .chart-tools {
+      display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+      position: sticky; z-index: 10;
     }
     .toolbar {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 20px;
-      background: #16213e;
-      border-bottom: 1px solid #0f3460;
+      top: 0; padding: 12px 20px; background: #16213e; border-bottom: 1px solid #0f3460;
     }
-    .toolbar h1 { font-size: 16px; font-weight: 600; color: #e94560; margin-right: auto; }
+    .toolbar h1 {
+      margin-right: auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; font-size: 16px; font-weight: 600; color: #e94560;
+    }
+    .chart-tools {
+      top: 53px; padding: 8px 20px; background: #121b34; border-bottom: 1px solid #243358;
+    }
+    .chart-tools .hint { margin-left: auto; color: #7080a0; font-size: 11px; }
     button {
-      padding: 8px 16px; border: none; border-radius: 6px;
-      font-size: 13px; font-weight: 500; cursor: pointer;
-      background: #0f3460; color: #e0e0e0; border: 1px solid #1a4a7a;
-      transition: background 0.2s;
+      padding: 7px 13px; border-radius: 7px; cursor: pointer;
+      font-size: 12px; font-weight: 600; background: #0f3460;
+      color: #e0e0e0; border: 1px solid #1a4a7a;
     }
     button:hover { background: #1a4a7a; }
-    .content {
-      flex: 1; display: flex; align-items: center; justify-content: center;
-      padding: 20px; overflow: auto;
+    button.active, button.accent { background: #e94560; border-color: #ff6275; color: #fff; }
+    .content { flex: 1; padding: 20px; overflow: auto; }
+    .chart-shell {
+      width: min(1400px, 100%); min-width: 660px; margin: 0 auto;
+      background: #fff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,.4);
+      overflow: hidden;
     }
-    .chart-canvas {
-      max-width: 100%; height: auto;
-      background: #fff; border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    }
+    #chart-view { width: 100%; height: 1180px; }
     .status-bar {
-      padding: 6px 20px; background: #0f3460;
-      font-size: 11px; color: #888; border-top: 1px solid #16213e;
+      position: sticky; bottom: 0; padding: 6px 20px; background: #0f3460;
+      font-size: 11px; color: #9aa7bf; border-top: 1px solid #16213e;
+    }
+    .hdr-tooltip { min-width: 245px; padding: 10px 12px; }
+    .hdr-tooltip-title {
+      display: flex; justify-content: space-between; gap: 18px;
+      margin-bottom: 8px; padding-bottom: 7px; border-bottom: 1px solid #32466f;
+      font-weight: 700; color: #fff;
+    }
+    .hdr-tooltip-title span { color: #91a4c8; font-size: 11px; font-weight: 500; }
+    .hdr-tooltip-row { display: flex; justify-content: space-between; gap: 20px; line-height: 22px; }
+    .hdr-tooltip-row span { color: #becbea; }
+    .hdr-tooltip-row i {
+      display: inline-block; width: 8px; height: 8px; margin-right: 7px;
+      border-radius: 50%; vertical-align: 1px;
+    }
+    .hdr-tooltip-row strong { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+    @media (max-width: 780px) {
+      .chart-tools .hint { display: none; }
+      .toolbar h1 { max-width: 42%; }
     }
   </style>
 </head>
 <body>
-  <div class="toolbar">
-    <h1>HDR Lumex</h1>
-    <button id="btn-save">下载 PNG</button>
-  </div>
-  <div class="content">
-    <canvas id="chart-canvas" class="chart-canvas"></canvas>
-  </div>
-  <div class="status-bar" id="status-bar">__FILENAME__</div>
+  <main class="page">
+    <div class="toolbar">
+      <h1 id="report-title">HDR Lumex</h1>
+      <button id="btn-save" class="accent">Download PNG</button>
+    </div>
+    <div class="chart-tools">
+      <button id="btn-pan" class="active" aria-pressed="true">Pan</button>
+      <button id="btn-zoom" aria-pressed="false">Zoom area</button>
+      <button id="btn-reset">Reset view</button>
+      <button id="btn-show-all">Show all</button>
+      <span class="hint">Wheel to zoom · Drag to pan · Drag the right slider to zoom brightness</span>
+    </div>
+    <div class="content">
+      <div class="chart-shell">
+        <div id="chart-view" role="img" aria-label="Interactive HDR analysis charts"></div>
+      </div>
+    </div>
+    <div class="status-bar" id="status-bar"></div>
+  </main>
 
+  <script>
+__ECHARTS__
+  </script>
   <script>
 __CHART_RENDERER__
   </script>
   <script>
     const analysisData = __ANALYSIS_DATA__;
-    const canvas = document.getElementById('chart-canvas');
-    window.drawChart(canvas, analysisData);
+    const reportTitle = document.getElementById('report-title');
+    const statusBar = document.getElementById('status-bar');
+    const btnPan = document.getElementById('btn-pan');
+    const btnZoom = document.getElementById('btn-zoom');
+    const controller = window.createHdrChart(document.getElementById('chart-view'), analysisData);
 
+    reportTitle.textContent = analysisData.filename || 'HDR Lumex';
+    statusBar.textContent = analysisData.filename || '';
+
+    function setMode(mode) {
+      controller.setMode(mode);
+      const zooming = mode === 'zoom';
+      btnZoom.classList.toggle('active', zooming);
+      btnZoom.setAttribute('aria-pressed', String(zooming));
+      btnPan.classList.toggle('active', !zooming);
+      btnPan.setAttribute('aria-pressed', String(!zooming));
+    }
+
+    btnPan.addEventListener('click', () => setMode('pan'));
+    btnZoom.addEventListener('click', () => setMode('zoom'));
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      controller.reset();
+      setMode('pan');
+    });
+    document.getElementById('btn-show-all').addEventListener('click', () => controller.showAll());
     document.getElementById('btn-save').addEventListener('click', () => {
       const a = document.createElement('a');
       a.download = (analysisData.filename || 'hdr-analysis').replace(/\.[^.]+$/, '') + '-hdr.png';
-      a.href = canvas.toDataURL('image/png');
+      a.href = controller.getPngDataUrl();
       a.click();
     });
+    controller.getChart().getZr().on('dblclick', () => controller.reset());
+    window.addEventListener('resize', () => controller.resize());
   </script>
 </body>
 </html>

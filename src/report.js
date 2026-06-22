@@ -31,11 +31,20 @@ function buildReportHtml(analysisData) {
     'chart-renderer.js',
     path.join(__dirname, '..', 'assets', 'chart-renderer.js')
   );
+  const echarts = loadAsset(
+    'echarts.min.js',
+    path.join(__dirname, '..', 'assets', 'echarts.min.js')
+  );
+  const safeScript = (source) => source.replace(/<\/script/gi, '<\\/script');
+  const safeData = JSON.stringify(analysisData)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 
   return template
-    .replace('__CHART_RENDERER__', () => chartRenderer)
-    .replace('__ANALYSIS_DATA__', () => JSON.stringify(analysisData))
-    .replace('__FILENAME__', () => analysisData.filename || '');
+    .replace('__ECHARTS__', () => safeScript(echarts))
+    .replace('__CHART_RENDERER__', () => safeScript(chartRenderer))
+    .replace('__ANALYSIS_DATA__', () => safeData);
 }
 
 /**

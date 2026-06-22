@@ -98,8 +98,38 @@
       flex-shrink: 0;
     }
     .toolbar .title { font-size: 14px; font-weight: 600; color: #e94560; margin: 0 auto 0 8px; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .content { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 20px; overflow: auto; }
-    .chart-canvas { max-width: 100%; height: auto; background: #fff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,.4); }
+    .chart-tools {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 18px; background: #121b34; border-bottom: 1px solid #243358;
+      flex-shrink: 0;
+    }
+    .chart-tools .hint { margin-left: auto; color: #7080a0; font-size: 11px; }
+    .chart-tools button { padding: 6px 12px; font-size: 12px; }
+    .chart-tools button.active { background: #e94560; border-color: #ff6275; color: #fff; }
+    .content { flex: 1; padding: 20px; overflow: auto; }
+    .chart-shell {
+      width: min(1400px, 100%); min-width: 660px; margin: 0 auto;
+      background: #fff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,.4);
+      overflow: hidden;
+    }
+    .chart-view { width: 100%; height: 1180px; }
+    .hdr-tooltip { min-width: 245px; padding: 10px 12px; }
+    .hdr-tooltip-title {
+      display: flex; justify-content: space-between; gap: 18px;
+      margin-bottom: 8px; padding-bottom: 7px; border-bottom: 1px solid #32466f;
+      font-weight: 700; color: #fff;
+    }
+    .hdr-tooltip-title span { color: #91a4c8; font-size: 11px; font-weight: 500; }
+    .hdr-tooltip-row { display: flex; justify-content: space-between; gap: 20px; line-height: 22px; }
+    .hdr-tooltip-row span { color: #becbea; }
+    .hdr-tooltip-row i {
+      display: inline-block; width: 8px; height: 8px; margin-right: 7px;
+      border-radius: 50%; vertical-align: 1px;
+    }
+    .hdr-tooltip-row strong { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+    @media (max-width: 780px) {
+      .chart-tools .hint { display: none; }
+    }
 
     button {
       padding: 8px 16px; border-radius: 8px; cursor: pointer;
@@ -175,11 +205,21 @@
       <button id="btn-save-png">Save PNG</button>
       <button id="btn-save-html" class="accent">Save HTML</button>
     </div>
+    <div class="chart-tools">
+      <button id="btn-pan" class="active" aria-pressed="true">Pan</button>
+      <button id="btn-zoom" aria-pressed="false">Zoom area</button>
+      <button id="btn-reset-view">Reset view</button>
+      <button id="btn-show-all">Show all</button>
+      <span class="hint">Wheel to zoom · Drag to pan · Drag the right slider to zoom brightness</span>
+    </div>
     <div class="content">
-      <canvas id="chart-canvas" class="chart-canvas"></canvas>
+      <div class="chart-shell">
+        <div id="chart-view" class="chart-view" role="img" aria-label="Interactive HDR analysis charts"></div>
+      </div>
     </div>
   </section>
 
+  <script src="assets/echarts.min.js"></script>
   <script src="assets/chart-renderer.js"></script>
   <script src="renderer.js"></script>
 </body>

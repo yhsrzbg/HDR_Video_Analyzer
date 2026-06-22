@@ -17,7 +17,8 @@ HDR Lumex is designed for HDR10 video: PQ/ST 2084 transfer with Rec.2020 primari
 - **Statistics**: MaxCLL, AveCLL, MaxFALL, AveFALL, Average APL, Median APL
 - **Analysis controls**: choose every-frame, 1-second, or 2-second sampling; enable or disable pixel subsampling
 - **Optional GPU decoding**: off by default for accuracy; can be enabled when speed matters
-- **Export**: save the chart as PNG, or a self-contained HTML report, from the results screen
+- **Interactive charts**: hover for exact sample details, zoom or pan the shared timeline, zoom the brightness axis, and toggle individual series
+- **Export**: save a full-range PNG or a self-contained interactive HTML report from the results screen
 
 ## Download & Run (end users)
 
@@ -39,6 +40,11 @@ Then drag a video onto the window or click to choose one. Analysis starts immedi
    - **GPU decoding**: disabled by default. Enabling it can be faster, but hardware decoder output may differ from CPU decoding on some codecs or drivers.
 4. Watch the progress bar; press **Cancel** to stop.
 5. When analysis finishes, the chart appears. Use **Back** to analyze another file, or **Save PNG / Save HTML** to export.
+
+On the results screen, use the mouse wheel to zoom the timeline, drag to pan,
+or switch to **Zoom area** to select a range. The brightness chart has a
+separate vertical zoom control. **Reset view** restores the full range and
+**Show all** restores every hidden series.
 
 The result chart has three panels:
 
@@ -69,7 +75,7 @@ npm run build:win  # build for Windows only; also build:mac and build:linux
 1. **FFprobe** extracts the video duration
 2. **FFmpeg** decodes the selected samples to raw 10-bit planar format (`gbrp10le`), padded to 3840x2160
 3. Per-pixel analysis: PQ EOTF (ST 2084) → linear light → Rec.2020 luminance → CIE xy chromaticity for gamut classification
-4. Results are drawn into a `<canvas>` in the window via the Canvas 2D API (no native canvas dependency). The same renderer produces the exported HTML report.
+4. Results are rendered with the bundled Apache ECharts runtime. The app and exported HTML share the same interactive chart module, and exported reports remain fully self-contained and offline.
 
 ## Credits
 

@@ -20,9 +20,13 @@ const els = {
   btnBack: document.getElementById('btn-back'),
   btnSavePng: document.getElementById('btn-save-png'),
   btnSaveHtml: document.getElementById('btn-save-html'),
+  btnPan: document.getElementById('btn-pan'),
+  btnZoom: document.getElementById('btn-zoom'),
+  btnResetView: document.getElementById('btn-reset-view'),
+  btnShowAll: document.getElementById('btn-show-all'),
   resultTitle: document.getElementById('result-title'),
   savedMsg: document.getElementById('saved-msg'),
-  canvas: document.getElementById('chart-canvas'),
+  chartView: document.getElementById('chart-view'),
   gpuCheckbox: document.getElementById('gpu-checkbox'),
   subsampleCheckbox: document.getElementById('subsample-checkbox'),
   sampleInterval: document.getElementById('sample-interval'),
@@ -49,6 +53,7 @@ els.sampleInterval.addEventListener('change', () => {
 
 const VALID_EXT = ['.mkv', '.mp4', '.mov', '.ts'];
 let currentData = null;
+let currentChart = null;
 let savedMsgTimer = null;
 
 function show(name) {
@@ -69,6 +74,16 @@ function flashSaved(msg) {
   els.savedMsg.textContent = msg;
   if (savedMsgTimer) clearTimeout(savedMsgTimer);
   savedMsgTimer = setTimeout(() => { els.savedMsg.textContent = ''; }, 4000);
+}
+
+function setChartMode(mode) {
+  if (!currentChart) return;
+  currentChart.setMode(mode);
+  const zooming = mode === 'zoom';
+  els.btnZoom.classList.toggle('active', zooming);
+  els.btnZoom.setAttribute('aria-pressed', String(zooming));
+  els.btnPan.classList.toggle('active', !zooming);
+  els.btnPan.setAttribute('aria-pressed', String(!zooming));
 }
 
 async function beginAnalysis(videoPath) {
@@ -110,8 +125,11 @@ async function beginAnalysis(videoPath) {
   currentData = res.analysisData;
   els.resultTitle.textContent = currentData.filename || '';
   els.savedMsg.textContent = '';
-  window.drawChart(els.canvas, currentData);
   show('result');
+  if (currentChart) currentChart.dispose();
+  currentChart = window.createHdrChart(els.chartView, currentData);
+  currentChart.getChart().getZr().on('dblclick', () => currentChart.reset());
+  setChartMode('pan');
 }
 
 // --- Drop screen interactions ---
@@ -150,14 +168,18 @@ els.btnCancel.addEventListener('click', async () => {
 
 // --- Result screen ---
 els.btnBack.addEventListener('click', () => {
+  if (currentChart) {
+    currentChart.dispose();
+    currentChart = null;
+  }
   currentData = null;
   els.dropErr.textContent = '';
   show('drop');
 });
 
 els.btnSavePng.addEventListener('click', async () => {
-  if (!currentData) return;
-  const dataUrl = els.canvas.toDataURL('image/png');
+  if (!currentData || !currentChart) return;
+  const dataUrl = currentChart.getPngDataUrl();
   const res = await api.savePng(dataUrl, stripExt(currentData.filename || 'hdr-analysis'));
   if (res.success) flashSaved('Saved: ' + baseName(res.filePath));
   else if (!res.cancelled) flashSaved('Save failed');
@@ -168,4 +190,18 @@ els.btnSaveHtml.addEventListener('click', async () => {
   const res = await api.saveHtml(currentData, stripExt(currentData.filename || 'hdr-analysis'));
   if (res.success) flashSaved('Saved: ' + baseName(res.filePath));
   else if (!res.cancelled) flashSaved('Save failed');
+});
+
+els.btnPan.addEventListener('click', () => setChartMode('pan'));
+els.btnZoom.addEventListener('click', () => setChartMode('zoom'));
+els.btnResetView.addEventListener('click', () => {
+  if (currentChart) currentChart.reset();
+  setChartMode('pan');
+});
+els.btnShowAll.addEventListener('click', () => {
+  if (currentChart) currentChart.showAll();
+});
+
+window.addEventListener('resize', () => {
+  if (currentChart) currentChart.resize();
 });

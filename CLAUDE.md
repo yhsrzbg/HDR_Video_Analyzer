@@ -30,8 +30,8 @@ The analysis core is the part most worth reading before changing analysis behavi
 - **`src/decode.js`** — builds platform-specific GPU/software candidates, spawns ffmpeg, reassembles raw `gbrp10le` frames (10-bit planar, padded to 3840x2160), applies backpressure, and emits results/progress in frame order.
 - **`src/color-science.js`** — pure per-frame analysis: PQ EOTF, Rec.2020→XYZ→CIE xy, luminance, and barycentric gamut classification.
 - **`src/frame-worker-pool.js` + `src/process-frame-worker.js`** — bounded Worker Thread processing used only after a GPU decoder succeeds. Frame buffers are transferred rather than cloned. Software decode deliberately processes synchronously because ffmpeg and workers otherwise compete for the same CPU.
-- **`src/report.js`** — `buildReportHtml(analysisData)` injects the analysis JSON + `assets/chart-renderer.js` into `src/report-template.html` by string replacement; used both for the in-app HTML export and the standalone report. `generateReport` writes it to disk.
-- **`assets/chart-renderer.js`** — defines `window.drawChart(canvas, analysisData)`, the 3-panel Canvas 2D renderer. Loaded as a `<script>` in both `index.html` (live view) and the exported report. No native `canvas` dependency.
+- **`src/report.js`** — `buildReportHtml(analysisData)` injects the analysis JSON, bundled ECharts runtime, and `assets/chart-renderer.js` into `src/report-template.html`; used both for the in-app HTML export and the standalone report. `generateReport` writes it to disk.
+- **`assets/chart-renderer.js`** — defines `window.createHdrChart(container, analysisData)`, the shared 3-panel ECharts renderer. It owns linked timeline zoom/pan, brightness-axis zoom, hover tooltips, legends, reset behavior, and full-range PNG generation. Loaded in both `index.html` and the self-contained exported report.
 
 ### Analysis settings and GPU behavior
 
